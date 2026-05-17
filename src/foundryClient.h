@@ -40,6 +40,7 @@ private:
 
         String body;
         serializeJson(reqDoc, body);
+        return body;
     }
 
     String post(const String url, const String body)
@@ -101,7 +102,7 @@ public:
         _client.setInsecure();
     }
 
-    String systemPrompt(const String &prompt)
+    void systemPrompt(const String &prompt)
     {
         _systemPrompt = prompt;
     }
