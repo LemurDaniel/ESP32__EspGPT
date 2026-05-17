@@ -11,6 +11,12 @@ namespace routes_gpt
         response.OK();
     }
 
+    void Router::get_GptSettings(EspWeb::Request &request, EspWeb::Response &response)
+    {
+        JsonDocument settings = fs.readJson("/gpt.settings.json");
+        response.json(settings).OK();
+    }
+
     void Router::post_GptAsk(EspWeb::Request &request, EspWeb::Response &response)
     {
 

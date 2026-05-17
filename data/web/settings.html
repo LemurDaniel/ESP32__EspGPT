@@ -158,6 +158,32 @@
     </div>
 
     <script>
+        window.onload = async function () {
+
+            const statusEl = document.getElementById('status');
+
+            try {
+                const res = await fetch('/admin/settings/gpt', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!res.ok) throw new Error(res.status);
+
+                const settings = await res.json();
+
+                document.getElementById('baseUrl').value = settings.baseUrl
+                document.getElementById('apiKey').value = settings.apiKey
+                document.getElementById('model').value = settings.model
+                document.getElementById('systemPrompt').value = settings.systemPrompt
+            } catch (e) {
+                statusEl.textContent = 'Fehler beim Speichern';
+                statusEl.className = 'status err';
+            }
+
+            setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'status'; }, 3000);
+        }
+
         async function saveSettings() {
             const payload = {
                 baseUrl: document.getElementById('baseUrl').value.trim(),
