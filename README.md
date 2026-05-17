@@ -9,6 +9,8 @@
 
 An ESP32 turned into a standalone AI chat terminal — powered by Azure AI Foundry.
 
+> **Learning project** — built to explore embedded HTTP clients, LLM APIs, and agentic patterns on constrained hardware. Not intended for production use.
+
 </div>
 
 

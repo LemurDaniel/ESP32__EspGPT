@@ -27,17 +27,17 @@ namespace routes_gpt
 
         // Ask Question
         String question = request.body.json()["msg"];
-        String answer = fc.ask(question, settings["model"]);
+        String answer = fc.chat(question, settings["model"]);
 
-        // Send Response
         if (fc.error().length() > 0)
         {
-            response.InternalServerError().text(fc.error().c_str());
+            answer = fc.error();
         }
-        else
-        {
-            response.OK().text(answer.c_str());
-        }
+
+        // This is just to make frontend less complicated. Returns like a stream, but not really :D
+        response.beginStream();
+        response.sendChunk(answer.c_str());
+        response.endStream();
     }
 
     void Router::post_GptAskStream(EspWeb::Request &request, EspWeb::Response &response)
@@ -64,6 +64,6 @@ namespace routes_gpt
 
         // ask question
         String question = request.body.json()["msg"];
-        fc.askStream(question, settings["model"], onChunkCallback, onEndCallback);
+        fc.chatStream(question, settings["model"], onChunkCallback, onEndCallback);
     }
 }
