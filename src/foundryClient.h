@@ -24,10 +24,11 @@ private:
     String _apiKey;
     String _systemPrompt;
 
-    String buildJson(const String &prompt, const String &model)
+    String buildJson(const String &prompt, const String &model, bool stream = false)
     {
         JsonDocument reqDoc;
         reqDoc["model"] = model;
+        reqDoc["stream"] = stream;
         JsonArray messages = reqDoc["messages"].to<JsonArray>();
 
         JsonObject sys = messages.add<JsonObject>();
@@ -43,8 +44,37 @@ private:
         return body;
     }
 
-    String post(const String url, const String body)
+public:
+    // baseUrl ohne abschliessenden Slash, z.B.
+    // "https://testingaihvj.cognitiveservices.azure.com"
+    void begin(String url, String key)
     {
+        _baseUrl = url;
+        _apiKey = key;
+
+        // NUR fuer Tests: keine Zertifikatspruefung.
+        // Produktion: _client.setCACert(rootCaPem);  statt setInsecure()
+        _client.setInsecure();
+    }
+
+    void systemPrompt(const String &prompt)
+    {
+        _systemPrompt = prompt;
+    }
+
+    /*
+       Schickt System- + User-Prompt, liefert die Antwort des Modells zurueck.
+       Bei einem Fehler: leerer String. Details dann ueber
+       lastStatus() (HTTP-Code) und lastError() (Fehlertext / Azure-JSON).
+   */
+    String ask(const String &prompt, const String &model)
+    {
+        _error = "";
+        _status = 0;
+
+        const String body = buildJson(prompt, model);
+        String url = _baseUrl + "/openai/v1/chat/completions";
+
         HTTPClient http;
 
         if (!http.begin(_client, url))
@@ -89,37 +119,51 @@ private:
         return temp["choices"][0]["message"]["content"];
     }
 
-public:
-    // baseUrl ohne abschliessenden Slash, z.B.
-    // "https://testingaihvj.cognitiveservices.azure.com"
-    void begin(String url, String key)
-    {
-        _baseUrl = url;
-        _apiKey = key;
-
-        // NUR fuer Tests: keine Zertifikatspruefung.
-        // Produktion: _client.setCACert(rootCaPem);  statt setInsecure()
-        _client.setInsecure();
-    }
-
-    void systemPrompt(const String &prompt)
-    {
-        _systemPrompt = prompt;
-    }
-
-    /*
-       Schickt System- + User-Prompt, liefert die Antwort des Modells zurueck.
-       Bei einem Fehler: leerer String. Details dann ueber
-       lastStatus() (HTTP-Code) und lastError() (Fehlertext / Azure-JSON).
-   */
-    String ask(const String &prompt, const String &model)
+    void askStream(const String &prompt, const String &model, std::function<void(const String &)> onChunk, std::function<void()> onEnd)
     {
         _error = "";
         _status = 0;
 
-        const String body = buildJson(prompt, model);
-        String url = _baseUrl + "/openai/v1/chat/completions";
+        const String body = buildJson(prompt, model, true);
 
-        return post(url, body);
+        HTTPClient http;
+        http.begin(_client, _baseUrl + "/openai/v1/chat/completions");
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("api-key", _apiKey);
+
+        _status = http.POST(body);
+        if (_status != 200)
+        {
+            _error = http.getString();
+            http.end();
+            return;
+        }
+
+        WiFiClient *stream = http.getStreamPtr();
+        while (http.connected())
+        {
+            String line = stream->readStringUntil('\n');
+            line.trim();
+
+            if (!line.startsWith("data: "))
+                continue;
+
+            String data = line.substring(6);
+            if (data == "[DONE]")
+                break;
+
+            JsonDocument chunk, filter;
+            filter["choices"][0]["delta"]["content"] = true;
+            deserializeJson(chunk, data, DeserializationOption::Filter(filter));
+
+            JsonVariant content = chunk["choices"][0]["delta"]["content"];
+
+            if (content.isNull())
+                continue;
+
+            onChunk(content.as<String>());
+        }
+        onEnd();
+        http.end();
     }
 };

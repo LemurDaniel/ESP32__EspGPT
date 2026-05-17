@@ -201,23 +201,29 @@
         class Message {
 
             _messageDiv = null;
-            constructor(text, classList) {
+            _placeHolder = null;
+
+            constructor(classList) {
                 this._messageDiv = document.createElement('div');
 
                 const messageDiv = this._messageDiv;
                 chatBox.appendChild(messageDiv);
                 chatBox.scrollTop = chatBox.scrollHeight;
 
-                messageDiv.innerHTML = text;
                 messageDivs.push(messageDiv);
 
                 this.add('message');
-                
+
                 if (null != classList) {
                     for (const item of classList.split(' ')) {
                         this.add(item);
                     }
                 }
+            }
+
+            placeHolder(text) {
+                this._messageDiv.innerHTML = text;
+                this._placeHolder = text;
             }
 
             toggle(className) {
@@ -233,7 +239,19 @@
             }
 
             set(text) {
+                if (this._placeHolder) {
+                    this._messageDiv.innerHTML = "";
+                    this._placeHolder = null;
+                }
                 this._messageDiv.innerHTML = text;
+            }
+
+            append(text) {
+                if (this._placeHolder) {
+                    this._messageDiv.innerHTML = "";
+                    this._placeHolder = null;
+                }
+                this._messageDiv.innerHTML += text;
             }
         }
 
@@ -242,7 +260,8 @@
             if (!text) return;
 
             // 1. User-Nachricht anzeigen
-            const userMessage = new Message(text, 'user');
+            const userMessage = new Message('user');
+            userMessage.set(text);
             userInput.value = '';
 
             // UI sperren
@@ -250,27 +269,26 @@
             sendBtn.disabled = true;
 
             // 2. Lade-Indikator anzeigen
-            const botMessage = new Message('Denke nach...', 'bot system-msg');
+            const botMessage = new Message('bot system-msg');
+            botMessage.placeHolder("Denke nach...")
 
             try {
                 // 3. POST-Request an /chat
-                const response = await fetch('/gpt/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ msg: text })
-                });
+                const res = await fetch('/gpt/chat/stream', { method: 'POST', body: { msg: text } });
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
 
-                if (!response.ok) throw new Error();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    botMessage.append(decoder.decode(value));
+                }
 
-                const reply = await response.text();
-
-                // 4. Antwort einfügen
-                botMessage.set(reply);
                 botMessage.remove('system-msg');
 
             } catch (error) {
+                console.log(error);
                 botMessage.set('Error');
                 botMessage.remove('system-msg');
             } finally {
