@@ -13,7 +13,7 @@ namespace routes_gpt
         doc["apiKey"] = request.body.json()["apiKey"];
         doc["model"] = request.body.json()["model"];
 
-        writeJsonFile("/gpt.settings.json", doc);
+        fs.writeJson("/gpt.settings.json", doc);
         
         response.OK();
     }
