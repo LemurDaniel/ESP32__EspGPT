@@ -38,6 +38,25 @@ public:
         // NUR fuer Tests: keine Zertifikatspruefung.
         // Produktion: _client.setCACert(rootCaPem); statt setInsecure()
         _client.setInsecure();
+
+        this->registerTool("call_url", "Call a URL via HTTP Client on C++",
+                           R"({"type":"object","properties":{"Url":{"type":"string","description":"The URL to call"}},"required":["Url"]})",
+                           [this](JsonDocument doc) -> String
+                           {
+                               HTTPClient http;
+                               if (!http.begin(_client, doc["Url"]))
+                               {
+                                   _error = "http.begin() failed";
+                                   _status = -1;
+                                   return String();
+                               }
+
+                               size_t status = http.GET();
+                               String response = http.getString();
+                               http.end();
+
+                               return response;
+                           });
     }
 
     void systemPrompt(const String &prompt)
@@ -46,7 +65,7 @@ public:
 
         _history.clear();
         _history.to<JsonArray>();
-         
+
         JsonObject sys = _history.add<JsonObject>();
         sys["role"] = "system";
         sys["content"] = _systemPrompt;
@@ -59,7 +78,7 @@ public:
      **/
 
 public:
-    using ToolHandler = std::function<String(JsonObjectConst)>;
+    using ToolHandler = std::function<String(JsonDocument)>;
 
     struct Tool
     {
@@ -70,7 +89,7 @@ public:
     };
 
 private:
-    std::vector<Tool> _tools;
+    std::map<String, Tool> _tools;
 
     int _maxLoops = 5;
     JsonDocument _history;
@@ -85,7 +104,12 @@ private:
 public:
     void registerTool(const String &name, const String &description, const String &paramsSchema, ToolHandler handler)
     {
-        _tools.push_back({name, description, paramsSchema, handler});
+        Tool tool;
+        tool.name = name;
+        tool.description = description;
+        tool.paramsSchema = paramsSchema;
+        tool.handler = handler;
+        _tools.insert({name, tool});
     }
 
     // Konversation auf System-Prompt zuruecksetzen
@@ -123,11 +147,11 @@ private:
             {
                 JsonObject tool = toolsArray.add<JsonObject>();
                 tool["type"] = "function";
-                tool["function"]["name"] = entry.name;
-                tool["function"]["description"] = entry.description;
+                tool["function"]["name"] = entry.first;
+                tool["function"]["description"] = entry.second.description;
 
                 JsonDocument paramsDoc;
-                deserializeJson(paramsDoc, entry.paramsSchema);
+                deserializeJson(paramsDoc, entry.second.paramsSchema);
                 tool["function"]["parameters"] = paramsDoc;
             }
         }
@@ -136,6 +160,37 @@ private:
         serializeJson(req, body);
 
         return body;
+    }
+
+    void _callTools(JsonArray toolCalls)
+    {
+        for (JsonObject toolCall : toolCalls)
+        {
+            String id = toolCall["id"].as<String>();
+            String name = toolCall["function"]["name"].as<String>();
+            String params = toolCall["function"]["arguments"].as<String>();
+
+            Serial.printf("[chat] tool_call id=%s name=%s\n", id.c_str(), name.c_str());
+
+            String result;
+            const auto tool = _tools.find(name);
+            if (tool != _tools.end())
+            {
+                JsonDocument docParams;
+                deserializeJson(docParams, params);
+                result = tool->second.handler(docParams);
+            }
+            else
+            {
+                result = "Error: unknown tool " + name;
+            }
+
+            JsonObject toolMsg = _history.add<JsonObject>();
+            toolMsg["role"] = "tool";
+            toolMsg["tool_call_id"] = id;
+            toolMsg["content"] = result;
+            return;
+        }
     }
 
     JsonDocument _basicCompletion(const String &model)
@@ -217,8 +272,10 @@ public:
 
             if (finishReason == "tool_calls")
             {
-                Serial.println("[chat] tool_calls – not yet implemented, continuing loop");
-                // TODO
+                // Add assistant message with tool_calls to history
+                _history.add<JsonObject>().set(choice["message"]);
+                JsonArray toolCalls = choice["message"]["tool_calls"].as<JsonArray>();
+                _callTools(toolCalls);
                 continue;
             }
 
