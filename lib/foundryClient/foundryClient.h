@@ -42,36 +42,30 @@ public:
         // Produktion: _client.setCACert(rootCaPem); statt setInsecure()
         _client.setInsecure();
 
-        this->registerTool("call_url", "Call a URL via HTTP Client on C++",
-                           R"({"type":"object","properties":{"Url":{"type":"string","description":"The URL to call"}},"required":["Url"]})",
-                           [this](JsonDocument doc) -> String
-                           {
-                               HTTPClient http;
-                               if (!http.begin(_client, doc["Url"]))
-                               {
-                                   _error = "http.begin() failed";
-                                   _status = -1;
-                                   return String();
-                               }
+        this->registerTool(
+            "call_url", "Call a URL via HTTP Client on C++",
+            R"({"type":"object","properties":{"Url":{"type":"string","description":"The URL to call"}},"required":["Url"]})",
+            [this](JsonDocument doc) -> String
+            {
+                HTTPClient http;
+                if (!http.begin(_client, doc["Url"]))
+                {
+                    _error = "http.begin() failed";
+                    _status = -1;
+                    return String();
+                }
 
-                               size_t status = http.GET();
-                               String response = http.getString();
-                               http.end();
+                size_t status = http.GET();
+                String response = http.getString();
+                http.end();
 
-                               return response;
-                           });
+                return response;
+            });
     }
 
     void systemPrompt(const String &prompt)
     {
         _systemPrompt = prompt;
-
-        _history.clear();
-        _history.to<JsonArray>();
-
-        JsonObject sys = _history.add<JsonObject>();
-        sys["role"] = "system";
-        sys["content"] = _systemPrompt;
     }
 
     /*-------------------------------------------------------------------------------------------------
@@ -85,14 +79,7 @@ private:
     std::map<String, Tool> _tools;
 
     int _maxLoops = 5;
-    JsonDocument _history;
-
-    void _addHistory(const char *role, const String &content)
-    {
-        JsonObject msg = _history.add<JsonObject>();
-        msg["role"] = role;
-        msg["content"] = content;
-    }
+    String _lastResponseId;
 
 public:
     void registerTool(const String &name, const String &description, const String &paramsSchema, ToolHandler handler)
@@ -115,14 +102,7 @@ public:
     // Konversation auf System-Prompt zuruecksetzen
     void clearHistory()
     {
-        if (_history.size() == 0)
-            return;
-
-        _history.to<JsonArray>();
-
-        JsonObject sys = _history.add<JsonObject>();
-        sys["role"] = "system";
-        sys["content"] = _systemPrompt;
+        _lastResponseId = "";
     }
 
     /*-------------------------------------------------------------------------------------------------
@@ -132,12 +112,20 @@ public:
      **/
 
 private:
-    String _buildRequestBody(const String &model, bool stream = false)
+    String _buildRequestBody(const JsonDocument &doc, bool stream = false)
     {
         JsonDocument req;
-        req["model"] = model;
+        req["model"] = _model;
         req["stream"] = stream;
-        req["messages"] = _history;
+
+        Serial.println("Last Response Id: " + _lastResponseId);
+        if (!_lastResponseId.isEmpty())
+            req["previous_response_id"] = _lastResponseId;
+
+        if (!_systemPrompt.isEmpty())
+            req["instructions"] = _systemPrompt;
+
+        req["input"] = doc;
 
         // Provide registered tools to model
         if (!_tools.empty())
@@ -147,12 +135,12 @@ private:
             {
                 JsonObject tool = toolsArray.add<JsonObject>();
                 tool["type"] = "function";
-                tool["function"]["name"] = entry.first;
-                tool["function"]["description"] = entry.second.description;
+                tool["name"] = entry.first;
+                tool["description"] = entry.second.description;
 
                 JsonDocument paramsDoc;
                 deserializeJson(paramsDoc, entry.second.paramsSchema);
-                tool["function"]["parameters"] = paramsDoc;
+                tool["parameters"] = paramsDoc;
             }
         }
 
@@ -162,15 +150,20 @@ private:
         return body;
     }
 
-    void _callTools(JsonArray toolCalls)
+    JsonDocument _callTools(JsonArray toolCalls)
     {
+        JsonDocument doc;
+        doc.to<JsonArray>();
         for (JsonObject toolCall : toolCalls)
         {
-            String id = toolCall["id"].as<String>();
-            String name = toolCall["function"]["name"].as<String>();
-            String params = toolCall["function"]["arguments"].as<String>();
+            if (toolCall["type"] != "function_call")
+                continue;
 
-            Serial.printf("[chat] tool_call id=%s name=%s\n", id.c_str(), name.c_str());
+            String call_id = toolCall["call_id"].as<String>();
+            String name = toolCall["name"].as<String>();
+            String params = toolCall["arguments"].as<String>();
+
+            Serial.printf("[chat] tool_call id=%s name=%s\n", call_id.c_str(), name.c_str());
 
             String result;
             const auto tool = _tools.find(name);
@@ -185,18 +178,21 @@ private:
                 result = "Error: unknown tool " + name;
             }
 
-            JsonObject toolMsg = _history.add<JsonObject>();
-            toolMsg["role"] = "tool";
-            toolMsg["tool_call_id"] = id;
-            toolMsg["content"] = result.isEmpty() ? String("(no result)") : result;
+            JsonObject obj = doc.add<JsonObject>();
+            obj["type"] = "function_call_output";
+            obj["call_id"] = call_id;
+            obj["output"] = result.isEmpty() ? String("(no result)") : result;
         }
+
+        return doc;
     }
 
-    JsonDocument _basicCompletion(const String &model)
+    JsonDocument _basicCompletion(const JsonDocument &input)
     {
         // Prepare HTTPClient
         HTTPClient http;
-        if (!http.begin(_client, _baseUrl + "/openai/v1/chat/completions"))
+        // Use response API to manage history on Azure Foundry Side.
+        if (!http.begin(_client, _baseUrl + "/openai/v1/responses"))
         {
             _error = "http.begin() failed";
             _status = -1;
@@ -206,7 +202,7 @@ private:
         http.addHeader("api-key", _apiKey);
 
         // Send Request
-        String body = _buildRequestBody(model);
+        String body = _buildRequestBody(input);
         _status = http.POST(body);
 
         // Check Response
@@ -241,14 +237,19 @@ public:
     {
         _error = "";
         _status = 0;
-        _addHistory("user", userMessage);
+        JsonDocument input;
+        input.to<JsonArray>();
+        JsonObject msg = input.add<JsonObject>();
+        msg["type"] = "message";
+        msg["role"] = "user";
+        msg["content"] = userMessage;
 
         Serial.printf("[chat] model=%s  msg=\"%.80s\"\n", _model.c_str(), userMessage.c_str());
 
         for (int step = 0; step < _maxLoops; step++)
         {
             Serial.printf("[chat] step %d – calling _basicCompletion...\n", step);
-            JsonDocument response = _basicCompletion(_model);
+            JsonDocument response = _basicCompletion(input);
 
             Serial.printf("[chat] HTTP status: %d\n", _status);
             if (_status != 200)
@@ -257,32 +258,26 @@ public:
                 return "";
             }
 
-            JsonVariant choice = response["choices"][0];
-            String finishReason = choice["finish_reason"].as<String>();
-            Serial.printf("[chat] finish_reason: %s\n", finishReason.c_str());
+            _lastResponseId = response["id"].as<String>();
+            JsonVariant message = response["output"][0];
+            String type = message["type"].as<String>();
+            Serial.printf("[chat] finish_reason: %s\n", type.c_str());
 
-            if (finishReason == "stop")
+            if (type == "message")
             {
-                String content = choice["message"]["content"].as<String>();
+                String content = message["content"][0]["text"].as<String>();
                 Serial.printf("[chat] done – reply length: %d chars\n", content.length());
-                _addHistory("assistant", content);
                 return content;
             }
 
-            if (finishReason == "tool_calls")
+            if (type == "function_call")
             {
-                // Add assistant message with tool_calls to history.
-                // Azure rejects null content, so coerce it to empty string.
-                JsonObject assistantMsg = _history.add<JsonObject>();
-                assistantMsg.set(choice["message"]);
-                if (assistantMsg["content"].isNull())
-                    assistantMsg["content"] = "";
-                JsonArray toolCalls = choice["message"]["tool_calls"].as<JsonArray>();
-                _callTools(toolCalls);
+                JsonArray toolCalls = response["output"].as<JsonArray>();
+                input = _callTools(toolCalls);
                 continue;
             }
 
-            _error = String("Unexpected finish_reason: ") + finishReason;
+            _error = String("Unexpected finish_reason: ") + type;
             Serial.printf("[chat] %s\n", _error.c_str());
             return "";
         }
@@ -299,6 +294,11 @@ public:
                     std::function<void(const String &)> onChunk,
                     std::function<void()> onEnd)
     {
+        // Workaround until implemented
+        String result = chat(prompt);
+        onChunk(result);
+        onEnd();
+        /*
         _error = "";
         _status = 0;
         _addHistory("user", prompt);
@@ -348,5 +348,6 @@ public:
         _addHistory("assistant", fullResponse);
         onEnd();
         http.end();
+        */
     }
 };
