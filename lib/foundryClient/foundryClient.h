@@ -7,6 +7,7 @@
 #include <ArduinoJson.h>
 #include <functional>
 #include <vector>
+#include "toolTypes.h"
 
 class AzureFoundryClient
 {
@@ -23,6 +24,7 @@ private:
     WiFiClientSecure _client;
     String _baseUrl;
     String _apiKey;
+    String _model;
     String _systemPrompt;
 
 public:
@@ -31,10 +33,11 @@ public:
 
     // baseUrl ohne abschliessenden Slash, z.B.
     // "https://testingaihvj.cognitiveservices.azure.com"
-    void begin(const String &url, const String &key)
+    void begin(const String &url, const String &key, const String &model)
     {
         _baseUrl = url;
         _apiKey = key;
+        _model = model;
         // NUR fuer Tests: keine Zertifikatspruefung.
         // Produktion: _client.setCACert(rootCaPem); statt setInsecure()
         _client.setInsecure();
@@ -77,18 +80,8 @@ public:
      *
      **/
 
-public:
-    using ToolHandler = std::function<String(JsonDocument)>;
-
-    struct Tool
-    {
-        String name;
-        String description;
-        String paramsSchema; // JSON-Schema des "parameters"-Objekts als String
-        ToolHandler handler;
-    };
-
 private:
+    std::vector<Mcp *> _mcps;
     std::map<String, Tool> _tools;
 
     int _maxLoops = 5;
@@ -110,6 +103,13 @@ public:
         tool.paramsSchema = paramsSchema;
         tool.handler = handler;
         _tools.insert({name, tool});
+    }
+
+    void registerMcp(Mcp &mcp)
+    {
+        _mcps.push_back(&mcp);
+        for (Tool &tool : mcp.capabilities())
+            registerTool(tool.name, tool.description, tool.paramsSchema, tool.handler);
     }
 
     // Konversation auf System-Prompt zuruecksetzen
@@ -188,8 +188,7 @@ private:
             JsonObject toolMsg = _history.add<JsonObject>();
             toolMsg["role"] = "tool";
             toolMsg["tool_call_id"] = id;
-            toolMsg["content"] = result;
-            return;
+            toolMsg["content"] = result.isEmpty() ? String("(no result)") : result;
         }
     }
 
@@ -238,18 +237,18 @@ public:
     /*
        Agentic Chat-Loop mit tool calls.
     */
-    String chat(const String &userMessage, const String &model)
+    String chat(const String &userMessage)
     {
         _error = "";
         _status = 0;
         _addHistory("user", userMessage);
 
-        Serial.printf("[chat] model=%s  msg=\"%.80s\"\n", model.c_str(), userMessage.c_str());
+        Serial.printf("[chat] model=%s  msg=\"%.80s\"\n", _model.c_str(), userMessage.c_str());
 
         for (int step = 0; step < _maxLoops; step++)
         {
             Serial.printf("[chat] step %d – calling _basicCompletion...\n", step);
-            JsonDocument response = _basicCompletion(model);
+            JsonDocument response = _basicCompletion(_model);
 
             Serial.printf("[chat] HTTP status: %d\n", _status);
             if (_status != 200)
@@ -272,8 +271,12 @@ public:
 
             if (finishReason == "tool_calls")
             {
-                // Add assistant message with tool_calls to history
-                _history.add<JsonObject>().set(choice["message"]);
+                // Add assistant message with tool_calls to history.
+                // Azure rejects null content, so coerce it to empty string.
+                JsonObject assistantMsg = _history.add<JsonObject>();
+                assistantMsg.set(choice["message"]);
+                if (assistantMsg["content"].isNull())
+                    assistantMsg["content"] = "";
                 JsonArray toolCalls = choice["message"]["tool_calls"].as<JsonArray>();
                 _callTools(toolCalls);
                 continue;
@@ -292,7 +295,7 @@ public:
     /*
        Einfaches Streaming ohne Tool-Support ohne Agentic-Loop.
     */
-    void chatStream(const String &prompt, const String &model,
+    void chatStream(const String &prompt,
                     std::function<void(const String &)> onChunk,
                     std::function<void()> onEnd)
     {
@@ -300,7 +303,7 @@ public:
         _status = 0;
         _addHistory("user", prompt);
 
-        String body = _buildRequestBody(model, true);
+        String body = _buildRequestBody(_model, true);
 
         HTTPClient http;
         http.begin(_client, _baseUrl + "/openai/v1/chat/completions");

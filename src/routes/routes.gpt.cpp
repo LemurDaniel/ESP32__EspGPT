@@ -4,10 +4,13 @@
 
 namespace routes_gpt
 {
+    AzureFoundryClient Router::_fc;
+    GithubClient Router::_gc;
 
     void Router::set_GptSettings(EspWeb::Request &request, EspWeb::Response &response)
     {
         fs.writeJson("/gpt.settings.json", request.body.json());
+        prepareFoundry(); // Update foundry on changes
         response.OK();
     }
 
@@ -20,18 +23,13 @@ namespace routes_gpt
     void Router::post_GptAsk(EspWeb::Request &request, EspWeb::Response &response)
     {
 
-        // Prepare foundry client
-        AzureFoundryClient fc;
-        JsonDocument settings = fs.readJson("/gpt.settings.json");
-        fc.begin(settings["baseUrl"], settings["apiKey"]);
-
         // Ask Question
         String question = request.body.json()["msg"];
-        String answer = fc.chat(question, settings["model"]);
+        String answer = _fc.chat(question);
 
-        if (fc.error().length() > 0)
+        if (_fc.error().length() > 0)
         {
-            answer = fc.error();
+            answer = _fc.error();
         }
 
         // This is just to make frontend less complicated. Returns like a stream, but not really :D
@@ -42,11 +40,6 @@ namespace routes_gpt
 
     void Router::post_GptAskStream(EspWeb::Request &request, EspWeb::Response &response)
     {
-
-        // Prepare foundry client
-        AzureFoundryClient fc;
-        JsonDocument settings = fs.readJson("/gpt.settings.json");
-        fc.begin(settings["baseUrl"], settings["apiKey"]);
 
         const auto onChunkCallback = [&response](const String &chunk)
         {
@@ -64,6 +57,6 @@ namespace routes_gpt
 
         // ask question
         String question = request.body.json()["msg"];
-        fc.chatStream(question, settings["model"], onChunkCallback, onEndCallback);
+        _fc.chatStream(question, onChunkCallback, onEndCallback);
     }
 }
