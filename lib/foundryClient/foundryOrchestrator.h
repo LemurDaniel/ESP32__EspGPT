@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 #include <functional>
 #include <vector>
-#include "foundryClient.h"
-#include "toolTypes.h"
+#include <foundryClient.h>
+#include <toolTypes.h>
 
 class AzureFoundryOrchestrator
 {

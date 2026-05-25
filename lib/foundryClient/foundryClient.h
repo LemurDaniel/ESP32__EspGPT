@@ -5,7 +5,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <map>
-#include "toolTypes.h"
+#include <toolTypes.h>
 
 class AzureFoundryClient
 {

@@ -4,9 +4,25 @@
 
 namespace routes_gpt
 {
-    GithubClient Router::_gc;
-    WebClient Router::_wc;
-    AzureFoundryOrchestrator Router::_fo;
+    static GithubClient _gc;
+    static WebClient _wc;
+    static LEDClient _led;
+    static AzureFoundryOrchestrator _fo;
+
+    void Router::prepareFoundry()
+    {
+        JsonDocument settings = fs.readJson("/gpt.settings.json");
+        _fo.begin(settings["baseUrl"], settings["apiKey"], settings["model"], settings["systemPrompt"]);
+        _fo.registerMcp(
+            _led.begin(GPIO_NUM_2)
+        );
+        _fo.registerMcp(
+            _gc.begin(settings["githubUser"], settings["githubToken"])
+        );
+        _fo.registerMcp(
+            _wc.begin()
+        );
+    }
 
     void Router::set_GptSettings(EspWeb::Request &request, EspWeb::Response &response)
     {
