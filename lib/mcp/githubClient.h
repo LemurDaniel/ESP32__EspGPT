@@ -63,8 +63,8 @@ private:
 
         JsonDocument doc;
         DeserializationError err = filter
-            ? deserializeJson(doc, response, DeserializationOption::Filter(*filter))
-            : deserializeJson(doc, response);
+                                       ? deserializeJson(doc, response, DeserializationOption::Filter(*filter))
+                                       : deserializeJson(doc, response);
 
         if (err)
         {
@@ -81,6 +81,45 @@ private:
 public:
     int status() const { return _status; }
     String error() const { return _error; }
+
+    GithubClient()
+    {
+        registerTool("github_get_repo",
+                     "Get metadata for a GitHub repository",
+                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"}},"required":["owner","repo"]})",
+                     [this](JsonDocument d) -> String
+                     { JsonDocument r = getRepo(d["owner"], d["repo"]); String s; serializeJson(r, s); return s; });
+
+        registerTool("github_get_contents",
+                     "List files or get file content from a GitHub repository path",
+                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"path":{"type":"string","description":"File or directory path, empty for root"}},"required":["owner","repo"]})",
+                     [this](JsonDocument d) -> String
+                     { JsonDocument r = getContents(d["owner"], d["repo"], d["path"] | ""); String s; serializeJson(r, s); return s; });
+
+        registerTool("github_get_branches",
+                     "List branches of a GitHub repository",
+                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"}},"required":["owner","repo"]})",
+                     [this](JsonDocument d) -> String
+                     { JsonDocument r = getBranches(d["owner"], d["repo"]); String s; serializeJson(r, s); return s; });
+
+        registerTool("github_get_commits",
+                     "List commits of a GitHub repository",
+                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"query":{"type":"string","description":"Optional query string, e.g. per_page=10&sha=main"}},"required":["owner","repo"]})",
+                     [this](JsonDocument d) -> String
+                     { JsonDocument r = getCommits(d["owner"], d["repo"], d["query"] | ""); String s; serializeJson(r, s); return s; });
+
+        registerTool("github_list_my_repos",
+                     "List repositories of the authenticated GitHub user",
+                     R"({"type":"object","properties":{}})",
+                     [this](JsonDocument) -> String
+                     { JsonDocument r = listMyRepos(); String s; serializeJson(r, s); return s; });
+
+        registerTool("github_list_user_repos",
+                     "List public repositories of a GitHub user",
+                     R"({"type":"object","properties":{"username":{"type":"string"}},"required":["username"]})",
+                     [this](JsonDocument d) -> String
+                     { JsonDocument r = listUserRepos(d["username"]); String s; serializeJson(r, s); return s; });
+    }
 
     GithubClient &begin(const String &username, const String &token)
     {
@@ -133,47 +172,5 @@ public:
         JsonDocument filter;
         _buildRepoFilter(filter);
         return _get("/users/" + username + "/repos?per_page=20", &filter);
-    }
-
-    std::vector<Tool> capabilities()
-    {
-        return {
-            {
-                "github_get_repo",
-                "Get metadata for a GitHub repository",
-                R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"}},"required":["owner","repo"]})",
-                [this](JsonDocument d) -> String { JsonDocument r = getRepo(d["owner"], d["repo"]); String s; serializeJson(r, s); return s; },
-            },
-            {
-                "github_get_contents",
-                "List files or get file content from a GitHub repository path",
-                R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"path":{"type":"string","description":"File or directory path, empty for root"}},"required":["owner","repo"]})",
-                [this](JsonDocument d) -> String { JsonDocument r = getContents(d["owner"], d["repo"], d["path"] | ""); String s; serializeJson(r, s); return s; },
-            },
-            {
-                "github_get_branches",
-                "List branches of a GitHub repository",
-                R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"}},"required":["owner","repo"]})",
-                [this](JsonDocument d) -> String { JsonDocument r = getBranches(d["owner"], d["repo"]); String s; serializeJson(r, s); return s; },
-            },
-            {
-                "github_get_commits",
-                "List commits of a GitHub repository",
-                R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"query":{"type":"string","description":"Optional query string, e.g. per_page=10&sha=main"}},"required":["owner","repo"]})",
-                [this](JsonDocument d) -> String { JsonDocument r = getCommits(d["owner"], d["repo"], d["query"] | ""); String s; serializeJson(r, s); return s; },
-            },
-            {
-                "github_list_my_repos",
-                "List repositories of the authenticated GitHub user",
-                R"({"type":"object","properties":{}})",
-                [this](JsonDocument) -> String { JsonDocument r = listMyRepos(); String s; serializeJson(r, s); return s; },
-            },
-            {
-                "github_list_user_repos",
-                "List public repositories of a GitHub user",
-                R"({"type":"object","properties":{"username":{"type":"string"}},"required":["username"]})",
-                [this](JsonDocument d) -> String { JsonDocument r = listUserRepos(d["username"]); String s; serializeJson(r, s); return s; },
-            },
-        };
     }
 };

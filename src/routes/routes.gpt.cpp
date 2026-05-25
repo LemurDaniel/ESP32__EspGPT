@@ -4,8 +4,9 @@
 
 namespace routes_gpt
 {
-    AzureFoundryClient Router::_fc;
     GithubClient Router::_gc;
+    WebClient Router::_wc;
+    AzureFoundryOrchestrator Router::_fo;
 
     void Router::set_GptSettings(EspWeb::Request &request, EspWeb::Response &response)
     {
@@ -25,11 +26,11 @@ namespace routes_gpt
 
         // Ask Question
         String question = request.body.json()["msg"];
-        String answer = _fc.chat(question);
+        String answer = _fo.chat(question);
 
-        if (_fc.error().length() > 0)
+        if (_fo.error().length() > 0)
         {
-            answer = _fc.error();
+            answer = _fo.error();
         }
 
         // This is just to make frontend less complicated. Returns like a stream, but not really :D
@@ -57,6 +58,6 @@ namespace routes_gpt
 
         // ask question
         String question = request.body.json()["msg"];
-        _fc.chatStream(question, onChunkCallback, onEndCallback);
+        _fo.chatStream(question, onChunkCallback, onEndCallback);
     }
 }

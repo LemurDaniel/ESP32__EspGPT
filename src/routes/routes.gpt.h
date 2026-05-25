@@ -1,8 +1,7 @@
-
-
 #include <router/router.h>
-#include <foundryClient.h>
+#include <foundryOrchestrator.h>
 #include <githubClient.h>
+#include <webClient.h>
 
 namespace routes_gpt
 {
@@ -23,17 +22,19 @@ namespace routes_gpt
 
         static void prepareFoundry()
         {
-            // Prepare foundry client
             JsonDocument settings = fs.readJson("/gpt.settings.json");
-            _fc.begin(settings["baseUrl"], settings["apiKey"], settings["model"]);
+
             _gc.begin(settings["githubUser"], settings["githubToken"]);
 
-            _fc.registerMcp(_gc);
+            _fo.begin(settings["baseUrl"], settings["apiKey"], settings["model"]);
+            _fo.registerMcp(_gc);
+            _fo.registerMcp(_wc);
         }
 
     private:
         static GithubClient _gc;
-        static AzureFoundryClient _fc;
+        static WebClient _wc;
+        static AzureFoundryOrchestrator _fo;
 
         static void get_GptSettings(EspWeb::Request &request, EspWeb::Response &response);
         static void set_GptSettings(EspWeb::Request &request, EspWeb::Response &response);

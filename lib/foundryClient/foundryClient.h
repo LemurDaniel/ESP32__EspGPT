@@ -1,22 +1,14 @@
 #pragma once
 
 #include <Arduino.h>
-
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <functional>
-#include <vector>
+#include <map>
 #include "toolTypes.h"
 
 class AzureFoundryClient
 {
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Basic settings and status, error
-     *
-     **/
 private:
     int _status = 0;
     String _error;
@@ -27,107 +19,13 @@ private:
     String _model;
     String _systemPrompt;
 
-public:
-    int status() const { return _status; }
-    String error() const { return _error; }
-
-    // baseUrl ohne abschliessenden Slash, z.B.
-    // "https://testingaihvj.cognitiveservices.azure.com"
-    void begin(const String &url, const String &key, const String &model)
-    {
-        _baseUrl = url;
-        _apiKey = key;
-        _model = model;
-        // NUR fuer Tests: keine Zertifikatspruefung.
-        // Produktion: _client.setCACert(rootCaPem); statt setInsecure()
-        _client.setInsecure();
-
-        this->registerTool(
-            "call_url", "Call a URL via HTTP Client on C++",
-            R"({"type":"object","properties":{"Url":{"type":"string","description":"The URL to call"}},"required":["Url"]})",
-            [this](JsonDocument doc) -> String
-            {
-                HTTPClient http;
-                if (!http.begin(_client, doc["Url"]))
-                {
-                    _error = "http.begin() failed";
-                    _status = -1;
-                    return String();
-                }
-
-                size_t status = http.GET();
-                String response = http.getString();
-                http.end();
-
-                return response;
-            });
-    }
-
-    void systemPrompt(const String &prompt)
-    {
-        _systemPrompt = prompt;
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Handle tools and history for agentic use
-     *
-     **/
-
-private:
-    std::vector<Mcp *> _mcps;
     std::map<String, Tool> _tools;
 
-    int _maxLoops = 5;
-    String _lastResponseId;
-
-public:
-    void registerTool(const String &name, const String &description, const String &paramsSchema, ToolHandler handler)
+    JsonDocument _post(JsonDocument &req)
     {
-        Tool tool;
-        tool.name = name;
-        tool.description = description;
-        tool.paramsSchema = paramsSchema;
-        tool.handler = handler;
-        _tools.insert({name, tool});
-    }
-
-    void registerMcp(Mcp &mcp)
-    {
-        _mcps.push_back(&mcp);
-        for (Tool &tool : mcp.capabilities())
-            registerTool(tool.name, tool.description, tool.paramsSchema, tool.handler);
-    }
-
-    // Konversation auf System-Prompt zuruecksetzen
-    void clearHistory()
-    {
-        _lastResponseId = "";
-    }
-
-    /*-------------------------------------------------------------------------------------------------
-     *
-     * Request body and post request
-     *
-     **/
-
-private:
-    String _buildRequestBody(const JsonDocument &doc, bool stream = false)
-    {
-        JsonDocument req;
-        req["model"] = _model;
-        req["stream"] = stream;
-
-        Serial.println("Last Response Id: " + _lastResponseId);
-        if (!_lastResponseId.isEmpty())
-            req["previous_response_id"] = _lastResponseId;
-
         if (!_systemPrompt.isEmpty())
             req["instructions"] = _systemPrompt;
 
-        req["input"] = doc;
-
-        // Provide registered tools to model
         if (!_tools.empty())
         {
             JsonArray toolsArray = req["tools"].to<JsonArray>();
@@ -144,54 +42,7 @@ private:
             }
         }
 
-        String body;
-        serializeJson(req, body);
-
-        return body;
-    }
-
-    JsonDocument _callTools(JsonArray toolCalls)
-    {
-        JsonDocument doc;
-        doc.to<JsonArray>();
-        for (JsonObject toolCall : toolCalls)
-        {
-            if (toolCall["type"] != "function_call")
-                continue;
-
-            String call_id = toolCall["call_id"].as<String>();
-            String name = toolCall["name"].as<String>();
-            String params = toolCall["arguments"].as<String>();
-
-            Serial.printf("[chat] tool_call id=%s name=%s\n", call_id.c_str(), name.c_str());
-
-            String result;
-            const auto tool = _tools.find(name);
-            if (tool != _tools.end())
-            {
-                JsonDocument docParams;
-                deserializeJson(docParams, params);
-                result = tool->second.handler(docParams);
-            }
-            else
-            {
-                result = "Error: unknown tool " + name;
-            }
-
-            JsonObject obj = doc.add<JsonObject>();
-            obj["type"] = "function_call_output";
-            obj["call_id"] = call_id;
-            obj["output"] = result.isEmpty() ? String("(no result)") : result;
-        }
-
-        return doc;
-    }
-
-    JsonDocument _basicCompletion(const JsonDocument &input)
-    {
-        // Prepare HTTPClient
         HTTPClient http;
-        // Use response API to manage history on Azure Foundry Side.
         if (!http.begin(_client, _baseUrl + "/openai/v1/responses"))
         {
             _error = "http.begin() failed";
@@ -201,11 +52,10 @@ private:
         http.addHeader("Content-Type", "application/json");
         http.addHeader("api-key", _apiKey);
 
-        // Send Request
-        String body = _buildRequestBody(input);
+        String body;
+        serializeJson(req, body);
         _status = http.POST(body);
 
-        // Check Response
         String response = http.getString();
         http.end();
 
@@ -218,7 +68,6 @@ private:
         if (response.isEmpty())
             return JsonDocument();
 
-        // Handle JSON Response Object
         JsonDocument doc;
         if (deserializeJson(doc, response))
         {
@@ -230,124 +79,54 @@ private:
     }
 
 public:
-    /*
-       Agentic Chat-Loop mit tool calls.
-    */
-    String chat(const String &userMessage)
+    int status() const { return _status; }
+    String error() const { return _error; }
+
+    // baseUrl ohne abschliessenden Slash, z.B.
+    // "https://testingaihvj.cognitiveservices.azure.com"
+    void begin(const String &url, const String &key, const String &model, const String &systemPrompt = "")
     {
-        _error = "";
-        _status = 0;
-        JsonDocument input;
-        input.to<JsonArray>();
+        _baseUrl = url;
+        _apiKey = key;
+        _model = model;
+        _systemPrompt = systemPrompt;
+        // NUR fuer Tests: keine Zertifikatspruefung.
+        // Produktion: _client.setCACert(rootCaPem); statt setInsecure()
+        _client.setInsecure();
+    }
+
+    void registerTool(const String &name, const String &description, const String &paramsSchema, ToolHandler handler)
+    {
+        _tools.insert({name, {name, description, paramsSchema, handler}});
+    }
+
+    JsonDocument complete(const String &userMessage, const String &previousResponseId = "")
+    {
+        Serial.println("[client] Last Response Id: " + previousResponseId);
+
+        JsonDocument req;
+        req["model"] = _model;
+        if (!previousResponseId.isEmpty())
+            req["previous_response_id"] = previousResponseId;
+
+        JsonArray input = req["input"].to<JsonArray>();
         JsonObject msg = input.add<JsonObject>();
         msg["type"] = "message";
         msg["role"] = "user";
         msg["content"] = userMessage;
 
-        Serial.printf("[chat] model=%s  msg=\"%.80s\"\n", _model.c_str(), userMessage.c_str());
-
-        for (int step = 0; step < _maxLoops; step++)
-        {
-            Serial.printf("[chat] step %d – calling _basicCompletion...\n", step);
-            JsonDocument response = _basicCompletion(input);
-
-            Serial.printf("[chat] HTTP status: %d\n", _status);
-            if (_status != 200)
-            {
-                Serial.printf("[chat] error: %s\n", _error.c_str());
-                return "";
-            }
-
-            _lastResponseId = response["id"].as<String>();
-            JsonVariant message = response["output"][0];
-            String type = message["type"].as<String>();
-            Serial.printf("[chat] finish_reason: %s\n", type.c_str());
-
-            if (type == "message")
-            {
-                String content = message["content"][0]["text"].as<String>();
-                Serial.printf("[chat] done – reply length: %d chars\n", content.length());
-                return content;
-            }
-
-            if (type == "function_call")
-            {
-                JsonArray toolCalls = response["output"].as<JsonArray>();
-                input = _callTools(toolCalls);
-                continue;
-            }
-
-            _error = String("Unexpected finish_reason: ") + type;
-            Serial.printf("[chat] %s\n", _error.c_str());
-            return "";
-        }
-
-        _error = "Max steps (" + String(_maxLoops) + ") reached";
-        Serial.printf("[chat] %s\n", _error.c_str());
-        return "";
+        return _post(req);
     }
 
-    /*
-       Einfaches Streaming ohne Tool-Support ohne Agentic-Loop.
-    */
-    void chatStream(const String &prompt,
-                    std::function<void(const String &)> onChunk,
-                    std::function<void()> onEnd)
+    JsonDocument complete(const JsonDocument &toolResults, const String &previousResponseId)
     {
-        // Workaround until implemented
-        String result = chat(prompt);
-        onChunk(result);
-        onEnd();
-        /*
-        _error = "";
-        _status = 0;
-        _addHistory("user", prompt);
+        Serial.println("[client] Last Response Id: " + previousResponseId);
 
-        String body = _buildRequestBody(_model, true);
+        JsonDocument req;
+        req["model"] = _model;
+        req["previous_response_id"] = previousResponseId;
+        req["input"] = toolResults;
 
-        HTTPClient http;
-        http.begin(_client, _baseUrl + "/openai/v1/chat/completions");
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("api-key", _apiKey);
-
-        _status = http.POST(body);
-        if (_status != 200)
-        {
-            _error = http.getString();
-            http.end();
-            return;
-        }
-
-        WiFiClient *stream = http.getStreamPtr();
-        String fullResponse;
-        while (http.connected())
-        {
-            String line = stream->readStringUntil('\n');
-            line.trim();
-
-            if (!line.startsWith("data: "))
-                continue;
-
-            String data = line.substring(6);
-            if (data == "[DONE]")
-                break;
-
-            JsonDocument chunk, filter;
-            filter["choices"][0]["delta"]["content"] = true;
-            deserializeJson(chunk, data, DeserializationOption::Filter(filter));
-
-            JsonVariant content = chunk["choices"][0]["delta"]["content"];
-
-            if (content.isNull())
-                continue;
-
-            String text = content.as<String>();
-            fullResponse += text;
-            onChunk(text);
-        }
-        _addHistory("assistant", fullResponse);
-        onEnd();
-        http.end();
-        */
+        return _post(req);
     }
 };
