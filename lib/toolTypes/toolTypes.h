@@ -28,6 +28,14 @@ public:
         return *this;
     }
 
+    Schema &integer(const std::string &name, const std::string &description = "")
+    {
+        _doc["properties"][name]["type"] = "integer";
+        if (!description.empty())
+            _doc["properties"][name]["description"] = description;
+        return *this;
+    }
+
     Schema &required(const std::string &name)
     {
         _doc["required"].add(name);

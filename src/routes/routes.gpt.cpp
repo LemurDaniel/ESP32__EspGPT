@@ -13,9 +13,7 @@ namespace routes_gpt
     {
         JsonDocument settings = fs.readJson("/gpt.settings.json");
         _fo.begin(settings["baseUrl"], settings["apiKey"], settings["model"], settings["systemPrompt"]);
-        _fo.registerMcp(
-            _led.begin(GPIO_NUM_2)
-        );
+        _fo.registerMcp(_led);
         _fo.registerMcp(
             _gc.begin(settings["githubUser"], settings["githubToken"])
         );

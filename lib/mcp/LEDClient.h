@@ -13,10 +13,6 @@
 class LEDClient : public Mcp
 {
 private:
-    gpio_num_t _pin;
-    int _state = 0;
-    int _morseTimeUnit = 500;
-
     static std::string _getMorseCode(char letter)
     {
         switch (letter)
@@ -139,14 +135,34 @@ public:
         ledMorse.withSchema(Schema{}.string("message", "Text to morse"));
         ledMorse.onCall(std::bind(&LEDClient::morse, this, std::placeholders::_1));
         registerTool(ledMorse);
+
+        Tool ledSet("led_set", "Set the GPIO pin for the LED");
+        ledSet.withSchema(Schema{}.integer("pin", "GPIO pin number (gpio_num_t)"));
+        ledSet.onCall(std::bind(&LEDClient::set, this, std::placeholders::_1));
+        registerTool(ledSet);
+
+        Tool ledGpio("led_gpio", "Get the current GPIO pin of the LED");
+        ledGpio.onCall(std::bind(&LEDClient::gpio, this, std::placeholders::_1));
+        registerTool(ledGpio);
     }
 
-    LEDClient &begin(gpio_num_t pin)
+private:
+    gpio_num_t _pin = GPIO_NUM_2;
+    int _state = 0;
+    int _morseTimeUnit = 500;
+
+public:
+    String gpio(JsonDocument)
     {
-        _pin = pin;
+        return "Using PIN " + String(_pin);
+    }
+
+    String set(JsonDocument doc)
+    {
+        _pin = doc["pin"].as<gpio_num_t>();
         gpio_reset_pin(_pin);
         gpio_set_direction(_pin, GPIO_MODE_OUTPUT);
-        return *this;
+        return "Using PIN " + String(_pin);
     }
 
     String on(JsonDocument)

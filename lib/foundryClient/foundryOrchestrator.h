@@ -34,14 +34,17 @@ private:
             deserializeJson(params, toolCall["arguments"].as<std::string>());
 
             const auto &it = _tools.find(name);
+            String result;
             if (it == _tools.end())
             {
                 Serial.printf("[mcp] Tool not found name=%s\n", name.c_str());
-                continue;
+                result = "Error: tool not found: " + String(name.c_str());
             }
-
-            Serial.printf("[mcp] executeTool name=%s\n", name.c_str());
-            String result = it->second.call(params);
+            else
+            {
+                Serial.printf("[mcp] executeTool name=%s\n", name.c_str());
+                result = it->second.call(params);
+            }
 
             JsonObject obj = merged.add<JsonObject>();
             obj["type"] = "function_call_output";
