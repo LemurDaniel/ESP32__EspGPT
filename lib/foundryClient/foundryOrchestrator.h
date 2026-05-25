@@ -12,7 +12,7 @@ class AzureFoundryOrchestrator
 private:
     AzureFoundryClient _client;
 
-    std::vector<Mcp *> _mcps;
+    std::map<std::string, Tool> _tools;
 
     int _maxLoops = 5;
     String _lastResponseId;
@@ -21,14 +21,32 @@ private:
     {
         JsonDocument merged;
         merged.to<JsonArray>();
-        JsonArray results = merged.as<JsonArray>();
 
         for (JsonObject toolCall : toolCalls)
         {
-            JsonDocument doc;
-            doc.set(toolCall);
-            for (Mcp *mcp : _mcps)
-                mcp->executeTool(doc, results);
+            if (toolCall["type"] != "function_call")
+                continue;
+
+            std::string call_id = toolCall["call_id"].as<std::string>();
+            std::string name = toolCall["name"].as<std::string>();
+
+            JsonDocument params;
+            deserializeJson(params, toolCall["arguments"].as<std::string>());
+
+            const auto &it = _tools.find(name);
+            if (it == _tools.end())
+            {
+                Serial.printf("[mcp] Tool not found name=%s\n", name.c_str());
+                continue;
+            }
+
+            Serial.printf("[mcp] executeTool name=%s\n", name.c_str());
+            String result = it->second.call(params);
+
+            JsonObject obj = merged.add<JsonObject>();
+            obj["type"] = "function_call_output";
+            obj["call_id"] = call_id;
+            obj["output"] = result.isEmpty() ? String("(no result)") : result;
         }
 
         return merged;
@@ -47,9 +65,9 @@ public:
 
     void registerMcp(Mcp &mcp)
     {
-        _mcps.push_back(&mcp);
+        _client.registerMcp(mcp);
         for (const auto &entry : mcp.tools())
-            _client.registerTool(entry.second.name, entry.second.description, entry.second.paramsSchema, entry.second.handler);
+            _tools.insert({entry.first, entry.second});
     }
 
     String chat(const String &userMessage)

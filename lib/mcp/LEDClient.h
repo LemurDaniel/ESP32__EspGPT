@@ -21,33 +21,86 @@ private:
     {
         switch (letter)
         {
-        case 'A': case 'a': return ".-";
-        case 'B': case 'b': return "-...";
-        case 'C': case 'c': return "-.-.";
-        case 'D': case 'd': return "-..";
-        case 'E': case 'e': return ".";
-        case 'F': case 'f': return "..-.";
-        case 'G': case 'g': return "--.";
-        case 'H': case 'h': return "....";
-        case 'I': case 'i': return "..";
-        case 'J': case 'j': return ".---";
-        case 'K': case 'k': return "-.-";
-        case 'L': case 'l': return ".-..";
-        case 'M': case 'm': return "--";
-        case 'N': case 'n': return "-.";
-        case 'O': case 'o': return "---";
-        case 'P': case 'p': return ".--.";
-        case 'Q': case 'q': return "--.-";
-        case 'R': case 'r': return ".-.";
-        case 'S': case 's': return "...";
-        case 'T': case 't': return "-";
-        case 'U': case 'u': return "..-";
-        case 'V': case 'v': return "...-";
-        case 'W': case 'w': return ".--";
-        case 'X': case 'x': return "-..-";
-        case 'Y': case 'y': return "-.--";
-        case 'Z': case 'z': return "--..";
-        default: return "";
+        case 'A':
+        case 'a':
+            return ".-";
+        case 'B':
+        case 'b':
+            return "-...";
+        case 'C':
+        case 'c':
+            return "-.-.";
+        case 'D':
+        case 'd':
+            return "-..";
+        case 'E':
+        case 'e':
+            return ".";
+        case 'F':
+        case 'f':
+            return "..-.";
+        case 'G':
+        case 'g':
+            return "--.";
+        case 'H':
+        case 'h':
+            return "....";
+        case 'I':
+        case 'i':
+            return "..";
+        case 'J':
+        case 'j':
+            return ".---";
+        case 'K':
+        case 'k':
+            return "-.-";
+        case 'L':
+        case 'l':
+            return ".-..";
+        case 'M':
+        case 'm':
+            return "--";
+        case 'N':
+        case 'n':
+            return "-.";
+        case 'O':
+        case 'o':
+            return "---";
+        case 'P':
+        case 'p':
+            return ".--.";
+        case 'Q':
+        case 'q':
+            return "--.-";
+        case 'R':
+        case 'r':
+            return ".-.";
+        case 'S':
+        case 's':
+            return "...";
+        case 'T':
+        case 't':
+            return "-";
+        case 'U':
+        case 'u':
+            return "..-";
+        case 'V':
+        case 'v':
+            return "...-";
+        case 'W':
+        case 'w':
+            return ".--";
+        case 'X':
+        case 'x':
+            return "-..-";
+        case 'Y':
+        case 'y':
+            return "-.--";
+        case 'Z':
+        case 'z':
+            return "--..";
+        default:
+            return "";
         }
     }
 
@@ -69,33 +122,23 @@ private:
 public:
     LEDClient()
     {
-        registerTool("led_on",
-                     "Turn the LED on",
-                     R"({"type":"object","properties":{}})",
-                     [this](JsonDocument doc) -> String
-                     { on(); return "LED turned on"; });
 
-        registerTool("led_off",
-                     "Turn the LED off",
-                     R"({"type":"object","properties":{}})",
-                     [this](JsonDocument doc) -> String
-                     { off(); return "LED turned off"; });
+        Tool ledOn("led_on", "Turn the LED on");
+        ledOn.onCall(std::bind(&LEDClient::on, this, std::placeholders::_1));
+        registerTool(ledOn);
 
-        registerTool("led_is_on",
-                     "Check whether the LED is currently on",
-                     R"({"type":"object","properties":{}})",
-                     [this](JsonDocument doc) -> String
-                     { return isOn() ? "LED is on" : "LED is off"; });
+        Tool ledOff("led_off", "Turn the LED off");
+        ledOff.onCall(std::bind(&LEDClient::off, this, std::placeholders::_1));
+        registerTool(ledOff);
 
-        registerTool("led_morse",
-                     "Blink a message in morse code on the LED",
-                     R"({"type":"object","properties":{"message":{"type":"string","description":"Text to morse"}}})",
-                     [this](JsonDocument doc) -> String
-                     {
-                         std::string msg = doc["arguments"]["message"].as<std::string>();
-                         morse(msg);
-                         return "Morse sent: " + String(msg.c_str());
-                     });
+        Tool ledIsOn("led_is_on", "Check whether the LED is currently on");
+        ledIsOn.onCall(std::bind(&LEDClient::isOn, this, std::placeholders::_1));
+        registerTool(ledIsOn);
+
+        Tool ledMorse("led_morse", "Blink a message in morse code on the LED");
+        ledMorse.withSchema(Schema{}.string("message", "Text to morse"));
+        ledMorse.onCall(std::bind(&LEDClient::morse, this, std::placeholders::_1));
+        registerTool(ledMorse);
     }
 
     LEDClient &begin(gpio_num_t pin)
@@ -106,29 +149,37 @@ public:
         return *this;
     }
 
-    bool isOn() { return _state; }
-
-    void on()
+    String on(JsonDocument)
     {
         _state = 1;
         gpio_set_level(_pin, 1);
+        return "LED turned on";
     }
 
-    void off()
+    String off(JsonDocument)
     {
         _state = 0;
         gpio_set_level(_pin, 0);
+        return "LED turned off";
     }
 
-    void morse(const std::string &message)
+    String isOn(JsonDocument)
     {
+        return _state ? "LED is on" : "LED is off";
+    }
+
+    String morse(JsonDocument doc)
+    {
+        std::string msg = doc["arguments"]["message"].as<std::string>();
+
         const int wordGap = 7 * _morseTimeUnit;
-        for (const char c : message)
+        for (const char c : msg)
         {
             if (c == ' ')
                 vTaskDelay(wordGap / portTICK_PERIOD_MS);
             else
                 _morseLetter(c);
         }
+        return "";
     }
 };

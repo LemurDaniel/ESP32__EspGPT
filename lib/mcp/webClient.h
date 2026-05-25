@@ -15,11 +15,10 @@ private:
 public:
     WebClient()
     {
-        registerTool("call_url",
-                     "Call a URL via HTTP GET and return the response body",
-                     R"({"type":"object","properties":{"Url":{"type":"string","description":"The URL to call"}},"required":["Url"]})",
-                     [this](JsonDocument doc) -> String
-                     { return get(doc["Url"].as<String>()); });
+        Tool t("call_url", "Call a URL via HTTP GET and return the response body");
+        t.withSchema(Schema{}.string("Url", "The URL to call").required("Url"));
+        t.onCall(std::bind(&WebClient::get, this, std::placeholders::_1));
+        registerTool(t);
     }
 
     WebClient &begin()
@@ -28,8 +27,9 @@ public:
         return *this;
     }
 
-    String get(const String &url)
+    String get(JsonDocument doc)
     {
+        String url = doc["Url"].as<String>();
         Serial.printf("[web] GET %s\n", url.c_str());
 
         HTTPClient http;

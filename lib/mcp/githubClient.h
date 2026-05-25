@@ -84,41 +84,34 @@ public:
 
     GithubClient()
     {
-        registerTool("github_get_repo",
-                     "Get metadata for a GitHub repository",
-                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"}},"required":["owner","repo"]})",
-                     [this](JsonDocument d) -> String
-                     { JsonDocument r = getRepo(d["owner"], d["repo"]); String s; serializeJson(r, s); return s; });
+        Tool tGetRepo("github_get_repo", "Get metadata for a GitHub repository");
+        tGetRepo.withSchema(Schema{}.string("owner").string("repo").required("owner").required("repo"));
+        tGetRepo.onCall(std::bind(&GithubClient::getRepo, this, std::placeholders::_1));
+        registerTool(tGetRepo);
 
-        registerTool("github_get_contents",
-                     "List files or get file content from a GitHub repository path",
-                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"path":{"type":"string","description":"File or directory path, empty for root"}},"required":["owner","repo"]})",
-                     [this](JsonDocument d) -> String
-                     { JsonDocument r = getContents(d["owner"], d["repo"], d["path"] | ""); String s; serializeJson(r, s); return s; });
+        Tool tGetContents("github_get_contents", "List files or get file content from a GitHub repository path");
+        tGetContents.withSchema(Schema{}.string("owner").string("repo").string("path", "File or directory path, empty for root").required("owner").required("repo"));
+        tGetContents.onCall(std::bind(&GithubClient::getContents, this, std::placeholders::_1));
+        registerTool(tGetContents);
 
-        registerTool("github_get_branches",
-                     "List branches of a GitHub repository",
-                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"}},"required":["owner","repo"]})",
-                     [this](JsonDocument d) -> String
-                     { JsonDocument r = getBranches(d["owner"], d["repo"]); String s; serializeJson(r, s); return s; });
+        Tool tGetBranches("github_get_branches", "List branches of a GitHub repository");
+        tGetBranches.withSchema(Schema{}.string("owner").string("repo").required("owner").required("repo"));
+        tGetBranches.onCall(std::bind(&GithubClient::getBranches, this, std::placeholders::_1));
+        registerTool(tGetBranches);
 
-        registerTool("github_get_commits",
-                     "List commits of a GitHub repository",
-                     R"({"type":"object","properties":{"owner":{"type":"string"},"repo":{"type":"string"},"query":{"type":"string","description":"Optional query string, e.g. per_page=10&sha=main"}},"required":["owner","repo"]})",
-                     [this](JsonDocument d) -> String
-                     { JsonDocument r = getCommits(d["owner"], d["repo"], d["query"] | ""); String s; serializeJson(r, s); return s; });
+        Tool tGetCommits("github_get_commits", "List commits of a GitHub repository");
+        tGetCommits.withSchema(Schema{}.string("owner").string("repo").string("query", "Optional query string, e.g. per_page=10&sha=main").required("owner").required("repo"));
+        tGetCommits.onCall(std::bind(&GithubClient::getCommits, this, std::placeholders::_1));
+        registerTool(tGetCommits);
 
-        registerTool("github_list_my_repos",
-                     "List repositories of the authenticated GitHub user",
-                     R"({"type":"object","properties":{}})",
-                     [this](JsonDocument) -> String
-                     { JsonDocument r = listMyRepos(); String s; serializeJson(r, s); return s; });
+        Tool tListMyRepos("github_list_my_repos", "List repositories of the authenticated GitHub user");
+        tListMyRepos.onCall(std::bind(&GithubClient::listMyRepos, this, std::placeholders::_1));
+        registerTool(tListMyRepos);
 
-        registerTool("github_list_user_repos",
-                     "List public repositories of a GitHub user",
-                     R"({"type":"object","properties":{"username":{"type":"string"}},"required":["username"]})",
-                     [this](JsonDocument d) -> String
-                     { JsonDocument r = listUserRepos(d["username"]); String s; serializeJson(r, s); return s; });
+        Tool tListUserRepos("github_list_user_repos", "List public repositories of a GitHub user");
+        tListUserRepos.withSchema(Schema{}.string("username").required("username"));
+        tListUserRepos.onCall(std::bind(&GithubClient::listUserRepos, this, std::placeholders::_1));
+        registerTool(tListUserRepos);
     }
 
     GithubClient &begin(const String &username, const String &token)
@@ -131,46 +124,48 @@ public:
 
     String username() const { return _username; }
 
-    // GET /repos/{owner}/{repo}
-    JsonDocument getRepo(const String &owner, const String &repo)
+    String getRepo(JsonDocument d)
     {
-        return _get("/repos/" + owner + "/" + repo);
+        JsonDocument r = _get("/repos/" + d["owner"].as<String>() + "/" + d["repo"].as<String>());
+        String s; serializeJson(r, s); return s;
     }
 
-    // GET /repos/{owner}/{repo}/contents/{path}
-    JsonDocument getContents(const String &owner, const String &repo, const String &path = "")
+    String getContents(JsonDocument d)
     {
-        return _get("/repos/" + owner + "/" + repo + "/contents/" + path);
+        String path = "/repos/" + d["owner"].as<String>() + "/" + d["repo"].as<String>() + "/contents/" + d["path"].as<String>();
+        JsonDocument r = _get(path);
+        String s; serializeJson(r, s); return s;
     }
 
-    // GET /repos/{owner}/{repo}/branches
-    JsonDocument getBranches(const String &owner, const String &repo)
+    String getBranches(JsonDocument d)
     {
-        return _get("/repos/" + owner + "/" + repo + "/branches");
+        JsonDocument r = _get("/repos/" + d["owner"].as<String>() + "/" + d["repo"].as<String>() + "/branches");
+        String s; serializeJson(r, s); return s;
     }
 
-    // GET /repos/{owner}/{repo}/commits  (optional: ?sha=branch&per_page=N)
-    JsonDocument getCommits(const String &owner, const String &repo, const String &query = "")
+    String getCommits(JsonDocument d)
     {
-        String path = "/repos/" + owner + "/" + repo + "/commits";
+        String path = "/repos/" + d["owner"].as<String>() + "/" + d["repo"].as<String>() + "/commits";
+        String query = d["query"] | "";
         if (query.length() > 0)
             path += "?" + query;
-        return _get(path);
+        JsonDocument r = _get(path);
+        String s; serializeJson(r, s); return s;
     }
 
-    // GET /user/repos
-    JsonDocument listMyRepos()
+    String listMyRepos(JsonDocument)
     {
         JsonDocument filter;
         _buildRepoFilter(filter);
-        return _get("/user/repos?per_page=20", &filter);
+        JsonDocument r = _get("/user/repos?per_page=20", &filter);
+        String s; serializeJson(r, s); return s;
     }
 
-    // GET /users/{username}/repos
-    JsonDocument listUserRepos(const String &username)
+    String listUserRepos(JsonDocument d)
     {
         JsonDocument filter;
         _buildRepoFilter(filter);
-        return _get("/users/" + username + "/repos?per_page=20", &filter);
+        JsonDocument r = _get("/users/" + d["username"].as<String>() + "/repos?per_page=20", &filter);
+        String s; serializeJson(r, s); return s;
     }
 };

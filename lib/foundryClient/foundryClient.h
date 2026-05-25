@@ -19,7 +19,7 @@ private:
     String _model;
     String _systemPrompt;
 
-    std::map<String, Tool> _tools;
+    std::map<std::string, Tool> _tools;
 
     JsonDocument _post(JsonDocument &req)
     {
@@ -33,11 +33,11 @@ private:
             {
                 JsonObject tool = toolsArray.add<JsonObject>();
                 tool["type"] = "function";
-                tool["name"] = entry.first;
-                tool["description"] = entry.second.description;
+                tool["name"] = entry.second.name();
+                tool["description"] = entry.second.description();
 
                 JsonDocument paramsDoc;
-                deserializeJson(paramsDoc, entry.second.paramsSchema);
+                deserializeJson(paramsDoc, entry.second.schemaJson());
                 tool["parameters"] = paramsDoc;
             }
         }
@@ -95,9 +95,10 @@ public:
         _client.setInsecure();
     }
 
-    void registerTool(const String &name, const String &description, const String &paramsSchema, ToolHandler handler)
+    void registerMcp(Mcp &mcp)
     {
-        _tools.insert({name, {name, description, paramsSchema, handler}});
+        for (const auto &entry : mcp.tools())
+            _tools.insert({entry.first, entry.second});
     }
 
     JsonDocument complete(const String &userMessage, const String &previousResponseId = "")

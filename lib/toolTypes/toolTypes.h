@@ -8,54 +8,85 @@
 
 using ToolHandler = std::function<String(JsonDocument)>;
 
-struct Tool
+class Schema
 {
-    String name;
-    String description;
-    String paramsSchema;
-    ToolHandler handler;
+private:
+    JsonDocument _doc;
+
+public:
+    Schema()
+    {
+        _doc["type"] = "object";
+        _doc["properties"].to<JsonObject>();
+    }
+
+    Schema &string(const std::string &name, const std::string &description = "")
+    {
+        _doc["properties"][name]["type"] = "string";
+        if (!description.empty())
+            _doc["properties"][name]["description"] = description;
+        return *this;
+    }
+
+    Schema &required(const std::string &name)
+    {
+        _doc["required"].add(name);
+        return *this;
+    }
+
+    String build() const
+    {
+        String out;
+        serializeJson(_doc, out);
+        return out;
+    }
+};
+
+class Tool
+{
+private:
+    std::string _name;
+    std::string _description;
+    Schema _schema;
+    ToolHandler _handler;
+
+public:
+    Tool(const std::string &name, const std::string &description) : _name(name), _description(description) {}
+
+    std::string name() const { return _name; }
+    std::string description() const { return _description; }
+    String schemaJson() const { return _schema.build(); }
+
+    Tool &withSchema(Schema schema)
+    {
+        _schema = schema;
+        return *this;
+    }
+
+    Tool &onCall(ToolHandler handler)
+    {
+        _handler = handler;
+        return *this;
+    }
+
+    String call(JsonDocument params) const
+    {
+        return _handler(params);
+    }
 };
 
 class Mcp
 {
 private:
-    std::map<String, Tool> _tools;
+    std::map<std::string, Tool> _tools;
 
 protected:
-    void registerTool(const String &name, const String &description, const String &paramsSchema, ToolHandler handler)
+    void registerTool(Tool tool)
     {
-        _tools.insert({name, {name, description, paramsSchema, handler}});
+        _tools.insert({tool.name(), tool});
     }
 
 public:
     virtual ~Mcp() = default;
-
-    const std::map<String, Tool> &tools() const { return _tools; }
-
-    void executeTool(const JsonDocument toolCall, const JsonArray results)
-    {
-        if (toolCall["type"] != "function_call")
-            return;
-
-        String call_id = toolCall["call_id"].as<String>();
-        String name = toolCall["name"].as<String>();
-
-        JsonDocument params;
-        deserializeJson(params, toolCall["arguments"].as<String>());
-
-        const auto &tool = _tools.find(name);
-        if (tool == _tools.end())
-        {
-            Serial.printf("[mcp] Tool not found name=%s\n", name.c_str());
-            return;
-        }
-
-        Serial.printf("[mcp] executeTool name=%s\n", name.c_str());
-        String result = tool->second.handler(params);
-
-        JsonObject obj = results.add<JsonObject>();
-        obj["type"] = "function_call_output";
-        obj["call_id"] = call_id;
-        obj["output"] = result.isEmpty() ? String("(no result)") : result;
-    }
+    const std::map<std::string, Tool> &tools() const { return _tools; }
 };
