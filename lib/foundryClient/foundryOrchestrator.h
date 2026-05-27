@@ -5,17 +5,27 @@
 #include <functional>
 #include <vector>
 #include <foundryClient.h>
-#include <toolTypes.h>
+#include <tool.h>
 
 class AzureFoundryOrchestrator
 {
+
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Handle Tools
+     *
+     **/
+
+public:
+    void registerMcp(Mcp &mcp)
+    {
+        _client.registerMcp(mcp);
+        for (const auto &entry : mcp.tools())
+            _tools.insert({entry.first, entry.second});
+    }
+
 private:
-    AzureFoundryClient _client;
-
     std::map<std::string, Tool> _tools;
-
-    int _maxLoops = 5;
-    String _lastResponseId;
 
     JsonDocument _callTools(JsonArray toolCalls)
     {
@@ -55,6 +65,17 @@ private:
         return merged;
     }
 
+    /*-------------------------------------------------------------------------------------------------
+     *
+     * Orchestrate
+     *
+     **/
+
+private:
+    int _maxLoops = 5;
+    String _lastResponseId;
+    AzureFoundryClient _client;
+
 public:
     int status() const { return _client.status(); }
     String error() const { return _client.error(); }
@@ -65,13 +86,6 @@ public:
     }
 
     void clearHistory() { _lastResponseId = ""; }
-
-    void registerMcp(Mcp &mcp)
-    {
-        _client.registerMcp(mcp);
-        for (const auto &entry : mcp.tools())
-            _tools.insert({entry.first, entry.second});
-    }
 
     String chat(const String &userMessage)
     {

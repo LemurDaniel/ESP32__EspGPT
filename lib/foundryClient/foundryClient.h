@@ -5,7 +5,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <map>
-#include <toolTypes.h>
+#include <tool.h>
 
 class AzureFoundryClient
 {
@@ -37,7 +37,7 @@ private:
                 tool["description"] = entry.second.description();
 
                 JsonDocument paramsDoc;
-                deserializeJson(paramsDoc, entry.second.schemaJson());
+                deserializeJson(paramsDoc, entry.second.schema());
                 tool["parameters"] = paramsDoc;
             }
         }

@@ -5,7 +5,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <vector>
-#include <toolTypes.h>
+#include <tool.h>
 
 class GithubClient : public Mcp
 {
@@ -85,32 +85,38 @@ public:
     GithubClient()
     {
         Tool tGetRepo("github_get_repo", "Get metadata for a GitHub repository");
-        tGetRepo.withSchema(Schema{}.string("owner").string("repo").required("owner").required("repo"));
-        tGetRepo.onCall(std::bind(&GithubClient::getRepo, this, std::placeholders::_1));
+        tGetRepo.param("owner").string();
+        tGetRepo.param("repo").string();
+        tGetRepo.does(std::bind(&GithubClient::getRepo, this, std::placeholders::_1));
         registerTool(tGetRepo);
 
         Tool tGetContents("github_get_contents", "List files or get file content from a GitHub repository path");
-        tGetContents.withSchema(Schema{}.string("owner").string("repo").string("path", "File or directory path, empty for root").required("owner").required("repo"));
-        tGetContents.onCall(std::bind(&GithubClient::getContents, this, std::placeholders::_1));
+        tGetContents.param("owner").string();
+        tGetContents.param("repo").string();
+        tGetContents.param("path").description("File or directory path, empty for root").string().optional();
+        tGetContents.does(std::bind(&GithubClient::getContents, this, std::placeholders::_1));
         registerTool(tGetContents);
 
         Tool tGetBranches("github_get_branches", "List branches of a GitHub repository");
-        tGetBranches.withSchema(Schema{}.string("owner").string("repo").required("owner").required("repo"));
-        tGetBranches.onCall(std::bind(&GithubClient::getBranches, this, std::placeholders::_1));
+        tGetBranches.param("owner").string();
+        tGetBranches.param("repo").string();
+        tGetBranches.does(std::bind(&GithubClient::getBranches, this, std::placeholders::_1));
         registerTool(tGetBranches);
 
         Tool tGetCommits("github_get_commits", "List commits of a GitHub repository");
-        tGetCommits.withSchema(Schema{}.string("owner").string("repo").string("query", "Optional query string, e.g. per_page=10&sha=main").required("owner").required("repo"));
-        tGetCommits.onCall(std::bind(&GithubClient::getCommits, this, std::placeholders::_1));
+        tGetCommits.param("owner").string();
+        tGetCommits.param("repo").string();
+        tGetCommits.param("query").description("Optional query string, e.g. per_page=10&sha=main").string().optional();
+        tGetCommits.does(std::bind(&GithubClient::getCommits, this, std::placeholders::_1));
         registerTool(tGetCommits);
 
         Tool tListMyRepos("github_list_my_repos", "List repositories of the authenticated GitHub user");
-        tListMyRepos.onCall(std::bind(&GithubClient::listMyRepos, this, std::placeholders::_1));
+        tListMyRepos.does(std::bind(&GithubClient::listMyRepos, this, std::placeholders::_1));
         registerTool(tListMyRepos);
 
         Tool tListUserRepos("github_list_user_repos", "List public repositories of a GitHub user");
-        tListUserRepos.withSchema(Schema{}.string("username").required("username"));
-        tListUserRepos.onCall(std::bind(&GithubClient::listUserRepos, this, std::placeholders::_1));
+        tListUserRepos.param("username").string();
+        tListUserRepos.does(std::bind(&GithubClient::listUserRepos, this, std::placeholders::_1));
         registerTool(tListUserRepos);
     }
 

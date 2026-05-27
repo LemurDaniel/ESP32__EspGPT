@@ -5,7 +5,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <vector>
-#include <toolTypes.h>
+#include <tool.h>
 
 class WebClient : public Mcp
 {
@@ -15,10 +15,10 @@ private:
 public:
     WebClient()
     {
-        Tool t("call_url", "Call a URL via HTTP GET and return the response body");
-        t.withSchema(Schema{}.string("Url", "The URL to call").required("Url"));
-        t.onCall(std::bind(&WebClient::get, this, std::placeholders::_1));
-        registerTool(t);
+        Tool get("call_url", "Call a URL via HTTP GET and return the response body");
+        get.param("Url").description("The URL to call");
+        get.does(std::bind(&WebClient::get, this, std::placeholders::_1));
+        registerTool(get);
     }
 
     WebClient &begin()

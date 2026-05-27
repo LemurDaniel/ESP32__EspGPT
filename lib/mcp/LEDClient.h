@@ -4,7 +4,7 @@
 #include <ArduinoJson.h>
 #include <string>
 #include <vector>
-#include <toolTypes.h>
+#include <tool.h>
 
 #include <driver/gpio.h>
 #include <freertos/FreeRTOS.h>
@@ -120,29 +120,29 @@ public:
     {
 
         Tool ledOn("led_on", "Turn the LED on");
-        ledOn.onCall(std::bind(&LEDClient::on, this, std::placeholders::_1));
+        ledOn.does(std::bind(&LEDClient::on, this, std::placeholders::_1));
         registerTool(ledOn);
 
         Tool ledOff("led_off", "Turn the LED off");
-        ledOff.onCall(std::bind(&LEDClient::off, this, std::placeholders::_1));
+        ledOff.does(std::bind(&LEDClient::off, this, std::placeholders::_1));
         registerTool(ledOff);
 
         Tool ledIsOn("led_is_on", "Check whether the LED is currently on");
-        ledIsOn.onCall(std::bind(&LEDClient::isOn, this, std::placeholders::_1));
+        ledIsOn.does(std::bind(&LEDClient::isOn, this, std::placeholders::_1));
         registerTool(ledIsOn);
 
         Tool ledMorse("led_morse", "Blink a message in morse code on the LED");
-        ledMorse.withSchema(Schema{}.string("message", "Text to morse"));
-        ledMorse.onCall(std::bind(&LEDClient::morse, this, std::placeholders::_1));
+        ledMorse.param("message").description("Text to morse").string();
+        ledMorse.does(std::bind(&LEDClient::morse, this, std::placeholders::_1));
         registerTool(ledMorse);
 
         Tool ledSet("led_set", "Set the GPIO pin for the LED");
-        ledSet.withSchema(Schema{}.integer("pin", "GPIO pin number (gpio_num_t)"));
-        ledSet.onCall(std::bind(&LEDClient::set, this, std::placeholders::_1));
+        ledSet.param("pin").description("GPIO pin number (gpio_num_t)").integer();
+        ledSet.does(std::bind(&LEDClient::set, this, std::placeholders::_1));
         registerTool(ledSet);
 
         Tool ledGpio("led_gpio", "Get the current GPIO pin of the LED");
-        ledGpio.onCall(std::bind(&LEDClient::gpio, this, std::placeholders::_1));
+        ledGpio.does(std::bind(&LEDClient::gpio, this, std::placeholders::_1));
         registerTool(ledGpio);
     }
 
