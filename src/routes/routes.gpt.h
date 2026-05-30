@@ -3,6 +3,7 @@
 #include <githubClient.h>
 #include <webClient.h>
 #include <LEDClient.h>
+#include <DS18B20Client.h>
 
 namespace routes_gpt
 {

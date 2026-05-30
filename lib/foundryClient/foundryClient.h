@@ -49,6 +49,7 @@ private:
             _status = -1;
             return JsonDocument();
         }
+        http.setTimeout(30000);
         http.addHeader("Content-Type", "application/json");
         http.addHeader("api-key", _apiKey);
 

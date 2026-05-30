@@ -4,6 +4,7 @@
 
 namespace routes_gpt
 {
+    static DS18B20Client _temp;
     static GithubClient _gc;
     static WebClient _wc;
     static LEDClient _led;
@@ -19,6 +20,9 @@ namespace routes_gpt
         );
         _fo.registerMcp(
             _wc.begin()
+        );
+        _fo.registerMcp(
+            _temp.begin()
         );
     }
 
