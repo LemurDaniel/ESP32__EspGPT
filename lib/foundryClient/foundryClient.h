@@ -59,7 +59,6 @@ private:
 
         String response = http.getString();
         http.end();
-        _client.stop();
 
         if (_status != 200)
         {

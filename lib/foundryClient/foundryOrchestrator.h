@@ -119,6 +119,7 @@ public:
             if (type == "function_call")
             {
                 JsonDocument toolResults = _callTools(response["output"].as<JsonArray>());
+                response = JsonDocument(); // free heap before next SSL call
                 response = _client.complete(toolResults, _lastResponseId);
                 continue;
             }
