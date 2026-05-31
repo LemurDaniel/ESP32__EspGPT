@@ -4,7 +4,7 @@
 
 namespace routes_gpt
 {
-    static DS18B20Client _temp;
+    static BME280Client _temp;
     static GithubClient _gc;
     static WebClient _wc;
     static LEDClient _led;

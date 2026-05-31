@@ -4,9 +4,6 @@
 
 #include <routes/routes.gpt.h>
 #include <DS18B20Client.h>
-#include <Adafruit_BME280.h>
-
-Adafruit_BME280 bme;
 
 EspWeb::MiniServer Server;
 
@@ -22,19 +19,15 @@ void setup()
 
   Server.start(80);
 
-  if (!bme.begin(0x76))
-  {
-    Serial.println("Kein BME280 gefunden! Adresse oder Verkabelung prüfen.");
-  }
 }
 
 void loop()
 {
-  Serial.printf("Temp: %.1f °C  |  Druck: %.1f hPa  |  Feuchte: %.1f %%\n",
-                bme.readTemperature(),
-                bme.readPressure() / 100.0F,
-                bme.readHumidity());
-  delay(2000);
+  //Serial.printf("Temp: %.1f °C  |  Druck: %.1f hPa  |  Feuchte: %.1f %%\n",
+  //              bme.readTemperature(),
+  //              bme.readPressure() / 100.0F,
+  //              bme.readHumidity());
+  //delay(2000);
 
-  // vTaskDelete(NULL); // Loop-Task komplett entfernen, FreeRTOS gibt Ressourcen frei
+  vTaskDelete(NULL); // Loop-Task komplett entfernen, FreeRTOS gibt Ressourcen frei
 }
