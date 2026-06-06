@@ -21,7 +21,9 @@ void setup()
   Server.staticFile("/admin/settings", "/web/settings.html");
   Server.setCustomLink("GPT Settings", "/admin/settings");
 
+  setCpuFrequencyMhz(80);
   Server.start(80);
+  WiFi.setSleep(true);
 }
 
 void loop()
