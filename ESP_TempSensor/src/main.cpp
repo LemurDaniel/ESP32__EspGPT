@@ -5,15 +5,10 @@
 #include <routes/routes.sensor.h>
 
 #include <Adafruit_BME280.h>
-#include <Adafruit_SSD1306.h>
+#include <TFT_eSPI.h>
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET   -1
-#define OLED_ADDR    0x3C
-
-Adafruit_BME280  bme;
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_BME280 bme;
+TFT_eSPI display = TFT_eSPI();
 
 EspWeb::MiniServer Server;
 
@@ -21,14 +16,14 @@ void setup()
 {
   Serial.begin(115200);
 
+  Wire.begin(CYD_I2C_SDA, CYD_I2C_SCL);
+
   bme.begin(0x76);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR))
-    Serial.println("SSD1306: Kein Display gefunden!");
-
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.display();
+  display.init();
+  display.setRotation(1);
+  display.fillScreen(TFT_BLACK);
+  display.setTextColor(TFT_WHITE, TFT_BLACK);
 
   Server.registerRouter(routes_sensor::Router());
 
@@ -43,27 +38,25 @@ void loop()
   float hum  = bme.readHumidity();
   float pres = bme.readPressure() / 100.0F;
 
-  display.clearDisplay();
+  display.fillScreen(TFT_BLACK);
 
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.print("Temp:    ");
-  display.setTextSize(2);
+  display.setTextSize(3);
   display.print(temp, 1);
   display.println(" C");
 
   display.setTextSize(1);
-  display.setCursor(0, 36);
+  display.setCursor(0, 70);
   display.print("Feuchte: ");
   display.print(hum, 1);
   display.println(" %");
 
-  display.setCursor(0, 50);
+  display.setCursor(0, 90);
   display.print("Druck:   ");
   display.print(pres, 1);
   display.println(" hPa");
-
-  display.display();
 
   delay(2000);
 }
