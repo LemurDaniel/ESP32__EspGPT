@@ -49,6 +49,43 @@ HistoryGraph *graphs[] = {&tempGraph, &humGraph, &presGraph};
 bool showingDetail  = false;
 Metric detailMetric = Metric::TEMPERATURE;
 
+// The ILI9341 backlight LED draws far more current than the ESP32 + sensors
+// combined, so it gets dimmed and eventually switched off entirely after a
+// period without touch input instead of staying lit continuously.
+const int backlightFullDuty           = 255;
+const int backlightDimDuty            = 20;
+const unsigned long idleDimTimeoutMs  = 15000;  // dim after 15s idle
+const unsigned long idleOffTimeoutMs  = 120000; // off after 2min idle
+
+enum class BacklightState
+{
+  FULL,
+  DIM,
+  OFF
+};
+BacklightState backlightState = BacklightState::FULL;
+unsigned long lastTouchMs     = 0;
+
+void setBacklight(BacklightState state)
+{
+  if (state == backlightState)
+    return;
+
+  switch (state)
+  {
+  case BacklightState::FULL:
+    analogWrite(TFT_BL, backlightFullDuty);
+    break;
+  case BacklightState::DIM:
+    analogWrite(TFT_BL, backlightDimDuty);
+    break;
+  case BacklightState::OFF:
+    analogWrite(TFT_BL, 0);
+    break;
+  }
+  backlightState = state;
+}
+
 TS_Point waitForTap()
 {
   while (!touchScreen.touched())
@@ -169,6 +206,8 @@ void setup()
   display.setRotation(1);
   display.fillScreen(theme::background);
   display.setTextColor(theme::text, theme::background);
+  analogWrite(TFT_BL, backlightFullDuty);
+  lastTouchMs = millis();
 
   SPI.begin(CYD_TOUCH_CLK, CYD_TOUCH_DO, CYD_TOUCH_DIN, CYD_TOUCH_CS);
   touchScreen.begin();
@@ -192,30 +231,54 @@ void loop()
   humGraph.push(hum);
   presGraph.push(pres);
 
-  if (showingDetail)
-    graphs[(int)detailMetric]->draw(display);
-  else
-    drawOverview(temp, hum, pres);
+  // Skip the (SPI-heavy) redraw entirely while the backlight is off - nothing
+  // is visible anyway, only the history buffers above need to keep filling.
+  if (backlightState != BacklightState::OFF)
+  {
+    if (showingDetail)
+      graphs[(int)detailMetric]->draw(display);
+    else
+      drawOverview(temp, hum, pres);
+  }
 
-  const int sampleIntervalMs = 2000;
+  const int sampleIntervalMs = 10000; // sensor values change slowly, no need to redraw every 2s
   const int pollStepMs       = 50;
   for (int waited = 0; waited < sampleIntervalMs; waited += pollStepMs)
   {
     uint16_t tx, ty;
     if (getScreenTouch(tx, ty))
     {
+      // If the screen was off, this tap only wakes it back up and shows the
+      // current view again - it doesn't also act as a row tap.
+      bool wasOff = backlightState == BacklightState::OFF;
+      lastTouchMs = millis();
+      setBacklight(BacklightState::FULL);
+
+      if (!wasOff)
+      {
+        if (showingDetail)
+          showingDetail = false;
+        else
+        {
+          detailMetric  = metricAtY(ty);
+          showingDetail = true;
+        }
+      }
+
       if (showingDetail)
-      {
-        showingDetail = false;
-        drawOverview(temp, hum, pres);
-      }
-      else
-      {
-        detailMetric  = metricAtY(ty);
-        showingDetail = true;
         graphs[(int)detailMetric]->draw(display);
-      }
+      else
+        drawOverview(temp, hum, pres);
+
       delay(300); // debounce
+    }
+    else
+    {
+      unsigned long idleMs = millis() - lastTouchMs;
+      if (idleMs > idleOffTimeoutMs)
+        setBacklight(BacklightState::OFF);
+      else if (idleMs > idleDimTimeoutMs)
+        setBacklight(BacklightState::DIM);
     }
     delay(pollStepMs);
   }
