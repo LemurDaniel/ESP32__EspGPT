@@ -28,7 +28,7 @@ namespace Leds
     // ===========================================================================
     //
     //   Lifecycle     begin, loads the state and registers both LED outputs.
-    //   Power         togglePower, isOn and revision.
+    //   Power         togglePower, setPower, isOn and revision.
     //   Rendering     update and pixels, draws one frame of the candle flame.
     //   Persistence   Writes the on / off state to NVS a while after a change.
     //
@@ -45,11 +45,17 @@ namespace Leds
 
     // ---------------------------------------------------------------------------
     // Power
-    //   togglePower, isOn and revision.
+    //   togglePower, setPower, isOn and revision.
     // ---------------------------------------------------------------------------
     public:
         /** @brief Turns the flame on or off and schedules a save. */
         void togglePower();
+
+        /**
+         * @brief Sets the flame to a given state, does nothing when it already is.
+         * @param isOn True to light the flame.
+         */
+        void setPower(bool isOn);
 
         /** @brief True while the flame is burning. */
         bool isOn() const;

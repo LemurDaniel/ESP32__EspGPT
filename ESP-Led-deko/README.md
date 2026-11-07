@@ -7,9 +7,14 @@ Bedienung nur über die BOOT-Taste, das Display (kein Touch) zeigt den Zustand u
 
 | Aktion | Wirkung |
 | --- | --- |
-| BOOT kurz (oder lang) drücken | Kerze an / aus |
+| BOOT kurz drücken | Kerze an / aus |
+| BOOT lang drücken (0,8 s) | Timer: aus → 4 h → 8 h → 12 h → aus |
 
-Der Zustand wird 3 s nach dem letzten Umschalten im NVS gespeichert und übersteht Stromausfall.
+**Timer (täglich):** Ab dem Einstellen brennt die Kerze N Stunden, ist dann bis zum nächsten Tag aus und geht zur selben Uhrzeit wieder an. Kurz drücken schaltet zwischendurch von Hand um, beim nächsten Timer-Wechsel greift wieder der Plan. Das Display zeigt z. B. `Timer 8h  aus in 3:12`.
+
+Ohne Uhr und WLAN ist das Einstecken der Bezugspunkt: Nach einem Stromausfall startet der Zyklus ab dem Einschalten neu, die Timer-Stufe bleibt gespeichert. Die Gangabweichung des Quarzes liegt bei wenigen Sekunden pro Tag.
+
+An/aus und Timer-Stufe werden im NVS gespeichert.
 
 ## Hardware
 
@@ -36,7 +41,7 @@ Seite **OUT** bleibt frei (zum Verketten weiterer Module, dann `LED_COUNT` anpas
 | LCD MOSI / SCLK | 6 / 7 | geteilt mit SD-Karte |
 | LCD CS / DC / RST / BL | 14 / 15 / 21 / 22 | |
 | Onboard RGB-LED | 8 | spiegelt LED 1 |
-| BOOT-Taste | 9 | an / aus |
+| BOOT-Taste | 9 | kurz an / aus, lang Timer |
 | **LED-Modul Data** | **2** | `LED_DATA_PIN` in `platformio.ini` |
 
 Header-Seite mit BOOT: `5V GND 3V3 0 1 2 3 4 5`. Meiden: 4, 5, 8, 9, 15 (Strapping), 12, 13 (USB), 6, 7, 14, 15, 21, 22 (LCD).
@@ -61,6 +66,7 @@ Unter Windows: Long Paths aktivieren und aus **PowerShell** bauen. Der ESP-IDF-T
 | `src/leds/LedController.*` | Kerzenflamme, Strom-Limit, Persistenz |
 | `src/display/StatusDisplay.*` | Statusseite und Live-Vorschau als Ring |
 | `src/input/BootButton.*` | Entprellte Taste mit kurzem und langem Druck |
+| `src/timer/CandleTimer.*` | Täglicher Timer 4 / 8 / 12 h |
 
 ## Ideen für später
 

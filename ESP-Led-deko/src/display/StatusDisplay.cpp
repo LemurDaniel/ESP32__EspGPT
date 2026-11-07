@@ -5,7 +5,8 @@
 //   Chapters:
 //     LIFECYCLE   Constructor, begin and update.
 //     PAGE        The static layout.
-//     PREVIEW     The live LED dots, arranged as a ring like the Freenove module.
+//     TIMER       The timer line.
+//     PREVIEW    The live LED dots, arranged as a ring like the Freenove module.
 //
 
 #include <display/StatusDisplay.h>
@@ -22,6 +23,8 @@ namespace Display
     // Layout, portrait 172x320
     static constexpr int16_t MARGIN        = 10;
     static constexpr int16_t STATUS_TOP    = 45;
+    static constexpr int16_t TIMER_TOP     = 85;
+    static constexpr int16_t TIMER_HEIGHT  = 10; // text size 1 is 8 px high
     static constexpr int16_t RING_CENTER_X = 86;  // 172 / 2
     static constexpr int16_t RING_CENTER_Y = 180;
     static constexpr int16_t RING_RADIUS   = 58;
@@ -66,7 +69,7 @@ namespace Display
         Serial.printf("[StatusDisplay] Panel ready, preview ring of %d LEDs\n", LED_COUNT);
     }
 
-    void StatusDisplay::update(bool isOn, uint32_t revision, const CRGB *pixels)
+    void StatusDisplay::update(bool isOn, uint32_t revision, const CRGB *pixels, const String &timerLine)
     {
         // Page
         if (!_hasDrawn || revision != _drawnRevision)
@@ -74,6 +77,13 @@ namespace Display
             drawPage(isOn);
             _hasDrawn      = true;
             _drawnRevision = revision;
+        }
+
+        // Timer
+        if (timerLine != _drawnTimerLine)
+        {
+            drawTimerLine(timerLine);
+            _drawnTimerLine = timerLine;
         }
 
         // Preview
@@ -115,12 +125,31 @@ namespace Display
             _tft.drawCircle(dotCenterX(index), dotCenterY(index), DOT_RADIUS + 1, COLOR_RING);
         }
         _isPreviewStale = true;
+        _drawnTimerLine = ""; // the fillScreen above erased it
 
         // Button hint
         _tft.setTextSize(1);
         _tft.setTextColor(COLOR_MUTED);
-        _tft.setCursor(MARGIN, HEIGHT - 20);
-        _tft.print("BOOT: an / aus");
+        _tft.setCursor(MARGIN, HEIGHT - 32);
+        _tft.print("BOOT kurz: an / aus");
+        _tft.setCursor(MARGIN, HEIGHT - 18);
+        _tft.print("BOOT lang: Timer 4/8/12h");
+    }
+
+    // ===========================================================================
+    // ================================   TIMER   ================================
+    // ===========================================================================
+    //
+    //   drawTimerLine   Clears the line area and prints the new text.
+    //
+
+    void StatusDisplay::drawTimerLine(const String &timerLine)
+    {
+        _tft.fillRect(0, TIMER_TOP, WIDTH, TIMER_HEIGHT, COLOR_BACKGROUND);
+        _tft.setTextSize(1);
+        _tft.setTextColor(COLOR_TEXT);
+        _tft.setCursor(MARGIN, TIMER_TOP);
+        _tft.print(timerLine);
     }
 
     // ===========================================================================

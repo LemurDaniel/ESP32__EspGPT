@@ -26,10 +26,13 @@ Single environment: `waveshare-c6-lcd147`. No automated tests.
 ## Architecture
 
 ```
-loop() ─► BootButton::poll()       any press = LedController::togglePower()
+loop() ─► BootButton::poll()       short = LedController::togglePower(), long = CandleTimer::cycleStep()
+       ├► CandleTimer::poll()      TURN_ON / TURN_OFF at the switches of the daily cycle -> setPower()
        ├► LedController::update()  candle flame frame every 20 ms, delayed NVS save
-       └► StatusDisplay::update()  page on revision change, ring preview of pixels() at 25 fps
+       └► StatusDisplay::update()  page on revision change, timer line on text change, ring preview at 25 fps
 ```
+
+- `CandleTimer` has no real-time clock: the cycle starts when the step is set or at boot. It uses `esp_timer_get_time()` (64 bit) because `millis()` wraps after 49 days. Events fire only at phase switches, so a manual toggle holds until the next switch.
 
 - Everything runs in the loop task, so `LedController` has no locking.
 - The candle flame samples a moving 2D noise field per LED (`inoise8`) for smooth flicker, plus rare random "gusts" that dim all LEDs and decay. Bright = yellow, dim = deep orange.

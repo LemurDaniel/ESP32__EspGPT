@@ -4,7 +4,7 @@
 //
 //   Chapters:
 //     LIFECYCLE     begin.
-//     POWER         togglePower, isOn and revision.
+//     POWER         togglePower, setPower, isOn and revision.
 //     RENDERING     update, pixels and the candle flame.
 //     PERSISTENCE   load and save of the NVS state.
 //
@@ -54,14 +54,24 @@ namespace Leds
     // ================================   POWER   ================================
     // ===========================================================================
     //
-    //   togglePower   On to off and back, schedules a save.
+    //   togglePower   On to off and back.
+    //   setPower      The one real implementation, schedules a save on change.
     //   isOn          Current state.
     //   revision      Change counter for the display.
     //
 
     void LedController::togglePower()
     {
-        _isOn          = !_isOn;
+        setPower(!_isOn);
+    }
+
+    void LedController::setPower(bool isOn)
+    {
+        if (isOn == _isOn)
+        {
+            return;
+        }
+        _isOn          = isOn;
         _revision++;
         _isSavePending = true;
         _lastChangeMs  = millis();

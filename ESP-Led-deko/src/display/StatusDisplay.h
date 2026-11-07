@@ -1,10 +1,10 @@
 // NOTE:
-//   Status page on the 1.47" ST7789 (172x320): on / off and a live preview of the candle LEDs.
+//   Status page on the 1.47" ST7789 (172x320): on / off, timer and a live preview of the candle LEDs.
 //   Requires: LCD_* pins and LED_COUNT as build flags, Adafruit ST7789 and GFX.
 //
 //   Display::StatusDisplay screen;
 //   screen.begin();
-//   screen.update(leds.isOn(), leds.revision(), leds.pixels());   // in loop()
+//   screen.update(leds.isOn(), leds.revision(), leds.pixels(), timer.statusLine());   // in loop()
 
 //
 //   Chapters:
@@ -28,6 +28,7 @@ namespace Display
     //
     //   Lifecycle   begin and update.
     //   Page        Static parts, redrawn only when the state changed.
+    //   Timer       The timer line, redrawn only when its text changed.
     //   Preview     One dot per LED, only changed dots are redrawn.
     //
 
@@ -48,8 +49,9 @@ namespace Display
          * @param isOn     True while the flame is burning.
          * @param revision LedController::revision() of that state.
          * @param pixels   LedController::pixels(), LED_COUNT entries.
+         * @param timerLine CandleTimer::statusLine() (e.g. `"Timer 8h  aus in 3:12"`).
          */
-        void update(bool isOn, uint32_t revision, const CRGB *pixels);
+        void update(bool isOn, uint32_t revision, const CRGB *pixels, const String &timerLine);
 
     private:
         static constexpr uint16_t WIDTH         = 172;
@@ -67,6 +69,15 @@ namespace Display
 
         bool _hasDrawn          = false;
         uint32_t _drawnRevision = 0;
+
+    // ---------------------------------------------------------------------------
+    // Timer
+    //   The timer line, redrawn only when its text changed.
+    // ---------------------------------------------------------------------------
+    private:
+        void drawTimerLine(const String &timerLine);
+
+        String _drawnTimerLine; // cleared by drawPage, forces a redraw
 
     // ---------------------------------------------------------------------------
     // Preview
