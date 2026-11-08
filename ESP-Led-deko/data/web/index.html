@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<!--
+  NOTE:
+    Web UI of the candle, served by MiniServer from LittleFS.
+    Requires: GET / POST /api/candle (src/web/routes.candle.cpp), upload via `pio run --target uploadfs`.
+-->
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kerze</title>
+  <style>
+    :root {
+      --bg: #120d0a; --card: #1e1712; --text: #f5ece4; --muted: #9a8b7e; --line: #3a2e25;
+      --flame: #ff9a2e; --flame-glow: rgba(255, 154, 46, .35); --error: #e06c5a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px; min-height: 100vh; background: var(--bg); color: var(--text);
+      font-family: system-ui, sans-serif; display: flex; justify-content: center;
+    }
+    main { width: 100%; max-width: 420px; }
+    header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+    h1 { font-size: 1.4rem; margin: 0; }
+    #clock { color: var(--muted); font-size: .9rem; }
+    .card { background: var(--card); border-radius: 14px; padding: 20px; margin-bottom: 12px; }
+    label { display: block; color: var(--muted); font-size: .85rem; margin-bottom: 8px; }
+
+    #power {
+      display: block; margin: 8px auto; width: 140px; height: 140px; border-radius: 50%;
+      border: 2px solid var(--line); background: #1a1410; color: var(--muted);
+      font-size: 3.2rem; cursor: pointer; transition: all .25s;
+    }
+    #power.on {
+      border-color: var(--flame); color: var(--flame);
+      box-shadow: 0 0 40px var(--flame-glow); animation: flicker 2.4s infinite;
+    }
+    @keyframes flicker {
+      0%, 100% { box-shadow: 0 0 40px var(--flame-glow); }
+      45% { box-shadow: 0 0 26px var(--flame-glow); }
+      60% { box-shadow: 0 0 48px var(--flame-glow); }
+    }
+    #powerText { text-align: center; color: var(--muted); margin-top: 8px; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    input, select {
+      width: 100%; padding: 10px; font-size: 1rem; border-radius: 10px;
+      border: 1px solid var(--line); background: #15100c; color: var(--text);
+    }
+    .presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    button.small {
+      border: 1px solid var(--line); background: transparent; color: var(--text);
+      border-radius: 10px; padding: 10px 0; font-size: .95rem; cursor: pointer;
+    }
+    button.small.active { border-color: var(--flame); background: rgba(255, 154, 46, .15); }
+    #save {
+      width: 100%; padding: 12px; font-size: 1rem; border-radius: 10px; cursor: pointer;
+      border: none; background: var(--flame); color: #1a1008; font-weight: 600;
+    }
+    #save:disabled { opacity: .4; cursor: default; }
+    #timerLine { margin-top: 12px; color: var(--muted); font-size: .9rem; min-height: 1.2em; }
+    #status { color: var(--error); font-size: .8rem; min-height: 1em; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🕯️ Kerze</h1>
+    <span id="clock"></span>
+  </header>
+
+  <div class="card">
+    <button id="power" aria-label="Kerze an oder aus">🕯️</button>
+    <div id="powerText">…</div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="start">Start (täglich)</label>
+        <input type="time" id="start" step="60">
+      </div>
+      <div>
+        <label for="hours">Dauer</label>
+        <select id="hours"></select>
+      </div>
+    </div>
+    <div class="presets" id="presets"></div>
+    <button id="save" disabled>Timer speichern</button>
+    <div id="timerLine"></div>
+  </div>
+
+  <div id="status"></div>
+</main>
+
+<script>
+  const API_URL = '/api/candle'
+  const POLL_INTERVAL_MS = 2000
+  const APPLY_DELAY_MS = 150  // the device applies a POST in its loop, re-read shortly after
+
+  let state = null
+  let isFormDirty = false     // true while the user edits, polling then leaves the form alone
+
+  // Build the duration options and presets once from the first state
+  function buildForm() {
+    const hours = document.getElementById('hours')
+    const options = []
+    for (let value = 0; value <= state.timerMaxHours; value++) {
+      const option = document.createElement('option')
+      option.value = value
+      option.textContent = 0 === value ? 'Timer aus' : value + ' h'
+      options.push(option)
+    }
+    hours.replaceChildren(...options)
+
+    const presets = document.getElementById('presets')
+    presets.replaceChildren(...state.timerPresets.map(value => {
+      const button = document.createElement('button')
+      button.className = 'small'
+      button.textContent = 0 === value ? 'aus' : value + ' h'
+      button.dataset.hours = value
+      button.onclick = () => { hours.value = value; markDirty() }
+      return button
+    }))
+  }
+
+  // Render the state into the controls, the form only while it is not being edited
+  function render() {
+    document.getElementById('power').classList.toggle('on', state.power)
+    document.getElementById('powerText').textContent = state.power ? 'brennt' : 'aus'
+    document.getElementById('clock').textContent = state.clockSynced ? state.clock + ' Uhr' : 'Uhrzeit fehlt'
+    document.getElementById('timerLine').textContent = state.timerLine
+
+    if (!isFormDirty) {
+      document.getElementById('start').value = state.timerStart
+      document.getElementById('hours').value = state.timerHours
+    }
+    const selected = Number(document.getElementById('hours').value)
+    document.querySelectorAll('#presets button').forEach(button => {
+      button.classList.toggle('active', Number(button.dataset.hours) === selected)
+    })
+    document.getElementById('save').disabled = !isFormDirty
+  }
+
+  function markDirty() {
+    isFormDirty = true
+    render()
+  }
+
+  async function loadState() {
+    try {
+      const res = await fetch(API_URL)
+      if (!res.ok) throw new Error(await res.text())
+      const isFirstLoad = null === state
+      state = await res.json()
+      if (isFirstLoad) buildForm()
+      render()
+      setStatus('')
+    } catch (error) {
+      setStatus('Gerät nicht erreichbar: ' + error.message)
+    }
+  }
+
+  async function send(update) {
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(update)
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setTimeout(loadState, APPLY_DELAY_MS)
+    } catch (error) {
+      setStatus('Fehler: ' + error.message)
+    }
+  }
+
+  function setStatus(text) {
+    document.getElementById('status').textContent = text
+  }
+
+  document.getElementById('power').onclick = () => {
+    if (null === state) return
+    send({ power: !state.power })
+  }
+  document.getElementById('start').oninput = markDirty
+  document.getElementById('hours').onchange = markDirty
+  document.getElementById('save').onclick = () => {
+    const timerStart = document.getElementById('start').value
+    const timerHours = Number(document.getElementById('hours').value)
+    if (!/^\d{2}:\d{2}$/.test(timerStart)) {
+      setStatus('Bitte eine Startzeit wählen.')
+      return
+    }
+    isFormDirty = false
+    send({ timerHours, timerStart })
+  }
+
+  loadState()
+  setInterval(loadState, POLL_INTERVAL_MS)
+</script>
+</body>
+</html>
