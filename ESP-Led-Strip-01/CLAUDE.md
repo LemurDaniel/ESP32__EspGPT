@@ -39,10 +39,12 @@ loop() ─► TouchPanel::poll()          one report per INT -> ControlScreen::h
 
 - Everything runs in the loop task, so no class has locking. Only `TouchPanel::onInterrupt` runs in an ISR and just sets a flag.
 - `ControlScreen` never draws from `handleTouch`: touches change `StripController`, its `revision()` triggers the redraw.
-- Header and buttons react only to `TouchPoint::isNewTouch`, sliders to every report of a drag.
+- The UI is deliberately minimal (user decision): tiles for power, effect and timer, one bar for the colour. No sliders for brightness or saturation, brightness is the fixed `LED_BRIGHTNESS`.
+- Tiles react only to `TouchPoint::isNewTouch`, the colour bar to every report of a drag.
+- `StripController::colorAt` is the one mapping from bar position to colour (warm white, white, colour wheel). The UI draws the bar with it, so bar and strip cannot drift apart.
 - `DailyTimer` has no real-time clock: the cycle starts when the preset is set or at boot. It uses `esp_timer_get_time()` (64 bit) because `millis()` wraps after 49 days. Events fire only at phase switches, so a manual toggle holds until the next switch. Preset in NVS namespace `timer`.
-- The button grid is indexed by `StripMode`, the timer takes the cell after the last mode. A new mode needs a label in `MODE_LABELS` and a free cell.
-- Settings (power, mode, hue, saturation, brightness) are persisted in NVS (`Preferences`, namespace `strip`) 3 s after the last change.
+- The effect tile cycles through `StripMode` in enum order. A new mode needs a label in `MODE_LABELS` (ControlScreen.cpp).
+- Settings (power, effect, colour position) are persisted in NVS (`Preferences`, namespace `strip`) 3 s after the last change.
 
 ## Code style
 

@@ -1,22 +1,22 @@
 # ESP-Led-Strip-01 🌈
 
 WS2812-LED-Strip (144 LEDs) am **Waveshare ESP32-C6-Touch-LCD-1.47** (172×320 JD9853, Touch AXS5106L).
-Bedienung über das Touch-Display: an / aus, Farbe, Sättigung, Helligkeit, fünf Effekte und ein täglicher Timer.
+Bedienung über das Touch-Display: an / aus, Farbe, Effekt und ein täglicher Timer.
 
 ## Bedienung
 
-| Bereich | Wirkung |
-| --- | --- |
-| Kopfzeile antippen | Strip an / aus |
-| Regler **FARBTON** | Farbton |
-| Regler **SAETTIGUNG** | links weiß, rechts volle Farbe |
-| Regler **HELLIGKEIT** | Gesamthelligkeit, das Strom-Limit regelt bei Bedarf weiter herunter |
-| Effekt-Tasten | **FARBE** (einfarbig), **REGENBOGEN**, **ATMEN**, **KOMET**, **KERZE** |
-| Taste **TIMER** | aus → 4 h → 8 h → 12 h → aus |
+Vier Zeilen von oben nach unten:
 
-Regler lassen sich ziehen. Farbton und Sättigung wirken bei FARBE, ATMEN und KOMET. Die Einstellungen werden 3 s nach der letzten Änderung im NVS gespeichert.
+| Zeile | Bedienung | Wirkung |
+| --- | --- | --- |
+| **LICHT** | antippen | Strip an / aus |
+| **FARBE** | Leiste ziehen | links Warmweiß und Weiß, danach der Farbkreis |
+| **EFFEKT** | antippen | Einfarbig → Kerze → Atmen → Regenbogen |
+| **TIMER** | antippen | aus → 4 h → 8 h → 12 h → aus |
 
-**Timer (täglich):** Ab dem Einstellen leuchtet der Strip N Stunden, ist dann bis zum nächsten Tag aus und geht zur selben Uhrzeit wieder an. Die Taste zeigt z. B. `TIMER 12H` und `aus in 3:12`. Antippen der Kopfzeile schaltet zwischendurch von Hand um, beim nächsten Timer-Wechsel greift wieder der Plan.
+Die Farbe wirkt bei Einfarbig und Atmen, Kerze und Regenbogen haben ihre eigenen Farben. Die Helligkeit ist fest (`LED_BRIGHTNESS` in `platformio.ini`). Die Einstellungen werden 3 s nach der letzten Änderung im NVS gespeichert.
+
+**Timer (täglich):** Ab dem Einstellen leuchtet der Strip N Stunden, ist dann bis zum nächsten Tag aus und geht zur selben Uhrzeit wieder an. Die Taste zeigt z. B. `12 H` und `aus in 3:12`. LICHT schaltet zwischendurch von Hand um, beim nächsten Timer-Wechsel greift wieder der Plan.
 
 Ohne Uhr ist das Einstellen der Bezugspunkt: Nach einem Stromausfall startet der Zyklus ab dem Einschalten neu, die Timer-Stufe bleibt gespeichert.
 
@@ -77,11 +77,11 @@ Unter Windows: Long Paths aktivieren und aus **PowerShell** bauen. Hängt der Up
 | Datei | Inhalt |
 | --- | --- |
 | `src/main.cpp` | Setup und Loop |
-| `src/leds/StripController.*` | Effekte, Farbe, Helligkeit, Strom-Limit, Persistenz |
+| `src/leds/StripController.*` | Effekte, Farbe, Strom-Limit, Persistenz |
 | `src/display/LcdPanel.*` | JD9853-Display und Hintergrundbeleuchtung |
 | `src/input/TouchPanel.*` | AXS5106L-Touch über I2C |
 | `src/timer/DailyTimer.*` | Täglicher Timer 4 / 8 / 12 h |
-| `src/ui/ControlScreen.*` | Bedienoberfläche: Regler, Effekt-Tasten und Timer-Taste |
+| `src/ui/ControlScreen.*` | Bedienoberfläche: Tasten für Licht, Effekt und Timer, Farbleiste |
 
 Display-Init und Touch-Protokoll stammen aus dem Waveshare-Demo (`ESP32-C6-Touch-LCD-1.47-Demo.zip`, Link im Wiki).
 
