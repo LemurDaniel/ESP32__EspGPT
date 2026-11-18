@@ -1,13 +1,14 @@
 // NOTE:
-//   Owns the WS2812 strip: power, colour, brightness, the effects and the power limit.
+//   Owns the WS2812 strip: power, colour, the effects and the power limit.
 //   The settings are persisted in NVS.
 //   Requires: FastLED, LED_DATA_PIN / LED_COUNT / LED_BRIGHTNESS / LED_MAX_MILLIAMPS
 //   as build flags. Only use it from the loop task, it has no locking.
 //
 //   Leds::StripController strip;
-//   strip.begin();                           // in setup()
-//   strip.update();                          // in loop(), renders one frame
-//   strip.setMode(Leds::StripMode::COMET);   // from the touch UI
+//   strip.begin();        // in setup()
+//   strip.update();       // in loop(), renders one frame
+//   strip.setColorPosition(120);   // from the touch UI, position on the colour bar
+//   strip.cycleMode();             // from the touch UI, next effect
 
 //
 //   Chapters:
@@ -28,22 +29,22 @@ namespace Leds
     // ===========================================================================
     //
     //   Lifecycle     begin, loads the settings and registers the strip.
-    //   Settings      Power, mode, hue, saturation, brightness and the revision.
+    //   Settings      Power, effect, colour and the revision.
     //   Rendering     update, draws one frame of the active effect.
     //   Persistence   Writes the settings to NVS a while after a change.
     //
 
-    /** @brief The effects of the strip, the values are persisted and index the UI buttons. */
+    /** @brief The effects of the strip in the order the UI cycles them, the values are persisted. */
     enum class StripMode : uint8_t
     {
-        SOLID   = 0, // one colour on all LEDs
-        RAINBOW = 1, // moving rainbow, ignores hue and saturation
-        BREATHE = 2, // the colour fading in and out
-        COMET   = 3, // a dot with a fading tail running along the strip
-        CANDLE  = 4, // flickering candle flame, ignores hue and saturation
+        SOLID   = 0, // the selected colour on all LEDs
+        CANDLE  = 1, // flickering candle flame, ignores the selected colour
+        BREATHE = 2, // the selected colour fading in and out
+        RAINBOW = 3, // moving rainbow, ignores the selected colour
     };
 
-    static constexpr uint8_t STRIP_MODE_COUNT = 5;
+    static constexpr uint8_t STRIP_MODE_COUNT = 4;
+
 
     class StripController
     {
@@ -57,7 +58,7 @@ namespace Leds
 
     // ---------------------------------------------------------------------------
     // Settings
-    //   Power, mode, hue, saturation, brightness and the revision.
+    //   Power, effect, colour and the revision.
     // ---------------------------------------------------------------------------
     public:
         /** @brief Turns the strip on or off. */
@@ -69,23 +70,27 @@ namespace Leds
          */
         void setPower(bool isOn);
 
-        /** @brief Sets the effect, does nothing when it already is active. */
-        void setMode(StripMode mode);
+        /** @brief Selects the next effect, after the last one the first again. */
+        void cycleMode();
 
-        /** @brief Sets the colour hue, 0 to 255 around the FastLED rainbow colour wheel. */
-        void setHue(uint8_t hue);
+        /**
+         * @brief Selects the colour by its position on the colour bar.
+         * @param position 0 to 255, see colorAt.
+         */
+        void setColorPosition(uint8_t position);
 
-        /** @brief Sets the colour saturation, 0 (white) to 255 (full colour). */
-        void setSaturation(uint8_t saturation);
-
-        /** @brief Sets the global brightness, 0 to 255. The power limit may scale it down further. */
-        void setBrightness(uint8_t brightness);
+        /**
+         * @brief The colour at a position of the colour bar, the one mapping UI and strip share.
+         * @param position 0..15 warm white, 16..31 white, 32..255 once around the colour wheel.
+         */
+        static CRGB colorAt(uint8_t position);
 
         bool isOn() const { return _isOn; }
         StripMode mode() const { return _mode; }
-        uint8_t hue() const { return _hue; }
-        uint8_t saturation() const { return _saturation; }
-        uint8_t brightness() const { return _brightness; }
+        uint8_t colorPosition() const { return _colorPosition; }
+
+        /** @brief The selected colour. */
+        CRGB color() const { return colorAt(_colorPosition); }
 
         /** @brief Increments on every change, lets the UI redraw only when needed. */
         uint32_t revision() const { return _revision; }
@@ -94,12 +99,10 @@ namespace Leds
         /** @brief Bumps the revision and schedules the delayed save. */
         void markChanged();
 
-        bool _isOn          = true;
-        StripMode _mode     = StripMode::RAINBOW;
-        uint8_t _hue        = 0;
-        uint8_t _saturation = 255;
-        uint8_t _brightness = LED_BRIGHTNESS;
-        uint32_t _revision  = 0;
+        bool _isOn             = true;
+        StripMode _mode        = StripMode::SOLID;
+        uint8_t _colorPosition = 0; // warm white
+        uint32_t _revision     = 0;
 
     // ---------------------------------------------------------------------------
     // Rendering
@@ -115,17 +118,16 @@ namespace Leds
         void renderCandle(uint32_t now);
 
         CRGB _strip[LED_COUNT];
-        uint8_t _gustLevel     = 0; // current dip of a gust in CANDLE, decays every frame
-        uint32_t _lastFrameMs  = 0;
-        uint8_t _rainbowHue    = 0; // hue of the first LED in RAINBOW, advances every frame
-        uint16_t _cometIndex   = 0; // head of the comet in COMET
+        uint32_t _lastFrameMs = 0;
+        uint8_t _rainbowHue   = 0; // hue of the first LED in RAINBOW, advances every frame
+        uint8_t _gustLevel    = 0; // current dip of a gust in CANDLE, decays every frame
 
     // ---------------------------------------------------------------------------
     // Persistence
     //   Writes the settings to NVS a while after a change.
     // ---------------------------------------------------------------------------
     private:
-        // Delayed, so dragging a slider writes the flash only once.
+        // Delayed, so dragging the colour bar writes the flash only once.
         static constexpr uint32_t SAVE_DELAY_MS = 3000;
 
         void load();

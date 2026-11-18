@@ -5,7 +5,7 @@
 //   pio run -e waveshare-c6-touch-lcd147 --target upload
 //   pio device monitor --baud 115200
 //
-//   Touch: header = on / off, sliders = hue, saturation, brightness, buttons = effect and timer.
+//   Touch: four tiles, a tap selects the next option: on / off, colour, effect, timer.
 
 //
 //   Chapters:

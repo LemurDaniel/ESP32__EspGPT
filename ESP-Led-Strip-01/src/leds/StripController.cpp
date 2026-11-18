@@ -4,7 +4,7 @@
 //
 //   Chapters:
 //     LIFECYCLE     begin.
-//     SETTINGS      togglePower, the setters and markChanged.
+//     SETTINGS      Power, cycleMode, the colour bar mapping and markChanged.
 //     RENDERING     update, the effects and the candle flame.
 //     PERSISTENCE   load and save of the NVS settings.
 //
@@ -16,12 +16,15 @@ namespace Leds
     static constexpr const char *PREFS_NAMESPACE = "strip";
     static constexpr uint8_t STRIP_VOLTS         = 5;
 
+    // Colour bar: two white fields at the left end, then the colour wheel
+    static constexpr uint8_t WARM_WHITE_END = 16; // positions below are warm white
+    static constexpr uint8_t WHITE_END      = 32; // positions below are white
+    static const CRGB WARM_WHITE            = CRGB(255, 150, 50);
+
     // Effects
     static constexpr uint8_t RAINBOW_HUE_STEP  = 3;  // hue distance between neighbouring LEDs
     static constexpr uint8_t BREATHE_BPM       = 12; // one breath every 5 s
     static constexpr uint8_t BREATHE_VALUE_MIN = 30; // never fully dark
-    static constexpr uint8_t COMET_SPEED       = 2;  // LEDs per frame => 144 LEDs in ~1.4 s
-    static constexpr uint8_t COMET_FADE        = 40; // out of 255 per frame, length of the tail
 
     // Candle flame, same tuning as ESP-Led-deko (red always full, green adds the yellow)
     static constexpr uint8_t FLAME_GREEN_MIN   = 50;  // deep orange
@@ -42,24 +45,26 @@ namespace Leds
         load();
 
         FastLED.addLeds<WS2812, LED_DATA_PIN, GRB>(_strip, LED_COUNT);
-        FastLED.setBrightness(_brightness);
+        FastLED.setBrightness(LED_BRIGHTNESS);
         // Brightness is scaled down further if the frame would exceed the current budget.
         FastLED.setMaxPowerInVoltsAndMilliamps(STRIP_VOLTS, LED_MAX_MILLIAMPS);
         FastLED.clear(true);
 
-        Serial.printf("[StripController] %d LEDs on GPIO%d, limit %d mA, %s, mode %d, brightness %d\n",
+        Serial.printf("[StripController] %d LEDs on GPIO%d, limit %d mA, %s, mode %d, colour position %d\n",
                       LED_COUNT, LED_DATA_PIN, LED_MAX_MILLIAMPS, _isOn ? "on" : "off",
-                      static_cast<int>(_mode), _brightness);
+                      static_cast<int>(_mode), _colorPosition);
     }
 
     // ===========================================================================
     // ==============================   SETTINGS   ===============================
     // ===========================================================================
     //
-    //   togglePower   On to off and back, delegates to setPower.
-    //   set...        Each setter ignores an unchanged value, so dragging a slider
-    //                 over the same value neither redraws nor saves.
-    //   markChanged   The one place that bumps the revision and schedules the save.
+    //   togglePower        On to off and back, delegates to setPower.
+    //   setPower           Ignores an unchanged state, so the timer may repeat itself.
+    //   cycleMode          Next effect.
+    //   setColorPosition   Colour from a position on the colour bar.
+    //   colorAt            The one mapping from bar position to colour.
+    //   markChanged        The one place that bumps the revision and schedules the save.
     //
 
     void StripController::togglePower()
@@ -78,48 +83,37 @@ namespace Leds
         Serial.printf("[StripController] Power -> %s\n", _isOn ? "on" : "off");
     }
 
-    void StripController::setMode(StripMode mode)
+    void StripController::cycleMode()
     {
-        if (mode == _mode)
-        {
-            return;
-        }
-        _mode = mode;
-        // The comet leaves a tail, the other effects would show it frozen for a frame
-        fill_solid(_strip, LED_COUNT, CRGB::Black);
+        _mode = static_cast<StripMode>((static_cast<uint8_t>(_mode) + 1) % STRIP_MODE_COUNT);
         markChanged();
         Serial.printf("[StripController] Mode -> %d\n", static_cast<int>(_mode));
     }
 
-    void StripController::setHue(uint8_t hue)
+    void StripController::setColorPosition(uint8_t position)
     {
-        if (hue == _hue)
+        // Unchanged while the finger rests: neither redraw nor save
+        if (position == _colorPosition)
         {
             return;
         }
-        _hue = hue;
+        _colorPosition = position;
         markChanged();
     }
 
-    void StripController::setSaturation(uint8_t saturation)
+    CRGB StripController::colorAt(uint8_t position)
     {
-        if (saturation == _saturation)
+        if (position < WARM_WHITE_END)
         {
-            return;
+            return WARM_WHITE;
         }
-        _saturation = saturation;
-        markChanged();
-    }
-
-    void StripController::setBrightness(uint8_t brightness)
-    {
-        if (brightness == _brightness)
+        if (position < WHITE_END)
         {
-            return;
+            return CRGB::White;
         }
-        _brightness = brightness;
-        FastLED.setBrightness(_brightness);
-        markChanged();
+        // 32..255 => hue 0..255
+        const uint8_t hue = (position - WHITE_END) * 255 / (255 - WHITE_END);
+        return CHSV(hue, 255, 255);
     }
 
     void StripController::markChanged()
@@ -157,30 +151,24 @@ namespace Leds
         switch (_mode)
         {
         case StripMode::SOLID:
-            fill_solid(_strip, LED_COUNT, CHSV(_hue, _saturation, 255));
-            break;
-
-        case StripMode::RAINBOW:
-            fill_rainbow(_strip, LED_COUNT, _rainbowHue, RAINBOW_HUE_STEP);
-            _rainbowHue++;
-            break;
-
-        case StripMode::BREATHE:
-            fill_solid(_strip, LED_COUNT, CHSV(_hue, _saturation, beatsin8(BREATHE_BPM, BREATHE_VALUE_MIN, 255)));
-            break;
-
-        case StripMode::COMET:
-            // Everything fades, the head paints fresh pixels in front of the tail
-            fadeToBlackBy(_strip, LED_COUNT, COMET_FADE);
-            for (uint8_t step = 0; step < COMET_SPEED; step++)
-            {
-                _cometIndex         = (_cometIndex + 1) % LED_COUNT;
-                _strip[_cometIndex] = CHSV(_hue, _saturation, 255);
-            }
+            fill_solid(_strip, LED_COUNT, color());
             break;
 
         case StripMode::CANDLE:
             renderCandle(now);
+            break;
+
+        case StripMode::BREATHE:
+        {
+            CRGB breath = color();
+            breath.nscale8_video(beatsin8(BREATHE_BPM, BREATHE_VALUE_MIN, 255));
+            fill_solid(_strip, LED_COUNT, breath);
+            break;
+        }
+
+        case StripMode::RAINBOW:
+            fill_rainbow(_strip, LED_COUNT, _rainbowHue, RAINBOW_HUE_STEP);
+            _rainbowHue++;
             break;
         }
 
@@ -219,17 +207,18 @@ namespace Leds
     //   load   Reads the settings from NVS, the member defaults apply on the first boot.
     //   save   Writes the settings to NVS.
     //
+    //   Keys "effect" and "colorpos": an earlier firmware stored "mode", "hue", "sat"
+    //   and "bri" with other meanings, those are left alone and ignored.
+    //
 
     void StripController::load()
     {
         // Read-write, so the namespace exists on the first boot and the read-only error log is skipped
         _prefs.begin(PREFS_NAMESPACE, false);
-        _isOn       = _prefs.getBool("on", _isOn);
-        _hue        = _prefs.getUChar("hue", _hue);
-        _saturation = _prefs.getUChar("sat", _saturation);
-        _brightness = _prefs.getUChar("bri", _brightness);
-        // A value from a newer firmware with more modes falls back to the default
-        const uint8_t storedMode = _prefs.getUChar("mode", static_cast<uint8_t>(_mode));
+        _isOn          = _prefs.getBool("on", _isOn);
+        _colorPosition = _prefs.getUChar("colorpos", _colorPosition);
+        // A value from a firmware with more effects falls back to the default
+        const uint8_t storedMode = _prefs.getUChar("effect", static_cast<uint8_t>(_mode));
         if (storedMode < STRIP_MODE_COUNT)
         {
             _mode = static_cast<StripMode>(storedMode);
@@ -241,10 +230,8 @@ namespace Leds
     {
         _prefs.begin(PREFS_NAMESPACE, false);
         _prefs.putBool("on", _isOn);
-        _prefs.putUChar("mode", static_cast<uint8_t>(_mode));
-        _prefs.putUChar("hue", _hue);
-        _prefs.putUChar("sat", _saturation);
-        _prefs.putUChar("bri", _brightness);
+        _prefs.putUChar("effect", static_cast<uint8_t>(_mode));
+        _prefs.putUChar("colorpos", _colorPosition);
         _prefs.end();
         Serial.println("[StripController] Settings saved to NVS");
     }
